@@ -120,7 +120,7 @@ async function onImportFile(event) {
 
   await replaceAll({ readings, bills });
   await setMeta('lastImport', `${new Date().toISOString().slice(0, 10)} (${file.name})`);
-  render(); // redraw the Data screen with the new counts
+  await render(); // redraw the Data screen with the new counts; wait, as it loads them asynchronously
   document.getElementById('importMsg').textContent = `Imported ${summary}.`;
 }
 
@@ -132,7 +132,7 @@ function render() {
   document.querySelectorAll('[data-nav]').forEach((a) => {
     a.classList.toggle('active', a.dataset.nav === name);
   });
-  screen();
+  return screen(); // returns a Promise for async screens, so callers can await the redraw
 }
 
 window.addEventListener('hashchange', render);
