@@ -120,10 +120,29 @@ test('sanity check: normal day passes', () => {
   assert.equal(s.perDay, 23);
 });
 
-test('sanity check: accidental rollover is flagged as extremely high', () => {
+test('sanity check: digits lower than yesterday are reported as going backwards', () => {
   const s = sanityCheck({ prevDate: '2026-11-17', prevFull: 28074, date: '2026-11-18', newFull: rollover(28074, 8073), recentUsages: [1, 2, 1] });
   assert.equal(s.suspicious, true);
-  assert.match(s.reasons[0], /extremely high/);
+  assert.equal(s.reasons[0], '8073 is lower than the previous reading 8074 (2026-11-17), but the meter can only go up');
+});
+
+test('sanity check: genuine rollover past 10,000 passes', () => {
+  const s = sanityCheck({ prevDate: '2026-11-17', prevFull: 39995, date: '2026-11-18', newFull: rollover(39995, 18), recentUsages: [20, 22, 25] });
+  assert.equal(s.perDay, 23);
+  assert.equal(s.suspicious, false);
+});
+
+test('sanity check: a typo giving a huge jump is extremely high', () => {
+  const s = sanityCheck({ prevDate: '2026-11-17', prevFull: 44659, date: '2026-11-18', newFull: rollover(44659, 5682), recentUsages: [20, 22, 25] });
+  assert.match(s.reasons[0], /1023 kWh\/day is extremely high/);
+});
+
+test('sanity check: past date entered above the next reading is flagged', () => {
+  const base = { prevDate: '2026-11-15', prevFull: 44618, date: '2026-11-16', recentUsages: [20, 22, 25], nextDate: '2026-11-17', nextFull: 44659 };
+  assert.equal(sanityCheck({ ...base, newFull: 44636 }).suspicious, false);
+  const s = sanityCheck({ ...base, newFull: 44663 });
+  assert.equal(s.suspicious, true);
+  assert.match(s.reasons[0], /higher than the next reading 4659 \(2026-11-17\)/);
 });
 
 test('sanity check: far above recent median is flagged', () => {

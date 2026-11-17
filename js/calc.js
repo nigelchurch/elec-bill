@@ -160,19 +160,35 @@ export function recentRealUsages(byDate, meter, date, n = SANITY.MEDIAN_DAYS) {
 
 // ---------- Sanity check ----------
 
+// Last 4 digits of a meter value, as shown on the meter (e.g. 28074 -> '8074').
+export const last4 = (full) => String(Math.round(full) % 10000).padStart(4, '0');
+
 // Is a new reading plausible? Compares the implied average daily usage since the
-// previous reading with absolute and recent-median limits.
+// previous reading with absolute and recent-median limits. If a later reading
+// already exists (when logging a past date), also checks the new value isn't
+// above it, which would make usage negative.
 // Returns { suspicious, total, days, perDay, median, reasons: [text] }.
-export function sanityCheck({ prevDate, prevFull, date, newFull, recentUsages }) {
+export function sanityCheck({ prevDate, prevFull, date, newFull, recentUsages, nextDate = null, nextFull = null }) {
   const days = daysBetween(prevDate, date);
   const total = newFull - prevFull;
   const perDay = total / days;
   const med = median(recentUsages);
   const reasons = [];
-  if (total < 0) reasons.push('the meter appears to have gone backwards');
-  if (perDay > SANITY.MAX_DAILY_KWH) reasons.push(`${Math.round(perDay)} kWh/day is extremely high`);
-  else if (med !== null && perDay > SANITY.MEDIAN_FACTOR * med + SANITY.MEDIAN_OFFSET) {
+
+  // Typed digits lower than the previous reading: rollover() has assumed the meter
+  // passed a multiple of 10,000, giving a huge jump. A genuine rollover gives a
+  // normal daily usage, so only a huge one means a meter that "went backwards".
+  const crossed = Math.floor(newFull / 10000) > Math.floor(prevFull / 10000);
+  if (total < 0 || (crossed && perDay > SANITY.MAX_DAILY_KWH)) {
+    reasons.push(`${last4(newFull)} is lower than the previous reading ${last4(prevFull)} (${prevDate}), but the meter can only go up`);
+  } else if (perDay > SANITY.MAX_DAILY_KWH) {
+    reasons.push(`${Math.round(perDay)} kWh/day is extremely high`);
+  } else if (med !== null && perDay > SANITY.MEDIAN_FACTOR * med + SANITY.MEDIAN_OFFSET) {
     reasons.push(`${Math.round(perDay)} kWh/day is far above the recent typical ${Math.round(med)} kWh/day`);
+  }
+
+  if (nextFull !== null && newFull > nextFull) {
+    reasons.push(`${last4(newFull)} is higher than the next reading ${last4(nextFull)} (${nextDate}), which would make usage negative`);
   }
   return { suspicious: reasons.length > 0, total, days, perDay, median: med, reasons };
 }
