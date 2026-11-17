@@ -122,3 +122,5 @@ button:disabled { opacity: 0.5; }
 .warn:empty { display: none; }
 .info { font-size: 0.9rem; color: var(--est); margin-top: 4px; white-space: pre-line; }
 .info:empty { display: none; }
+.usage { font-size: 0.9rem; margin-top: 4px; }
+.usage:empty { display: none; }

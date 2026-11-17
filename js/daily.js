@@ -15,13 +15,11 @@ import { NAMES, MONTHS, todayISO, fmtDay, fmtNum, esc } from './format.js';
 
 let app;                // the <main> element
 let date;               // selected date 'YYYY-MM-DD'
-let resultHTML = '';    // message shown after a save
 
 // Called by the router each time the screen is opened: start on today.
 export function renderDaily(container) {
   app = container;
   date = todayISO();
-  resultHTML = '';
   return draw();
 }
 
@@ -46,7 +44,6 @@ async function draw() {
       <button type="submit" class="full" id="enterBtn">Enter</button>
       <p id="dailyMsg" class="error"></p>
     </form>
-    ${resultHTML}
     ${novaComparison(byDate)}
     <a href="#bill" class="button secondary full">Bill</a>
   `;
@@ -57,50 +54,54 @@ async function draw() {
   document.getElementById('prevDay').addEventListener('click', () => changeDate(addDays(date, -1)));
   document.getElementById('nextDay').addEventListener('click', () => changeDate(addDays(date, 1)));
 
-  // Check each meter as soon as its 4th digit is typed. If Gaae&Thip looks fine,
-  // jump to Nig&Jop; if not, stay put so it can be corrected.
+  // Check each meter as soon as its 4th digit is typed, and always move on from
+  // Gaae&Thip to Nig&Jop (any warning stays visible under the first box).
   for (const m of METERS) {
     const input = document.getElementById(`in-${m}`);
     input.addEventListener('input', () => {
-      const ok = instantCheck(m, input.value, readings, byDate);
-      if (ok && m === 'thip' && input.value.length === 4) document.getElementById('in-nova').focus();
+      instantCheck(m, input.value, readings, byDate);
+      if (m === 'thip' && input.value.length === 4) document.getElementById('in-nova').focus();
     });
   }
 }
 
-// Show (or clear) the red warning under a box. Returns true if there is no warning.
+// Feedback under a box once 4 digits are typed:
+//   amber – it replaces a saved reading
+//   red   – the sanity check failed (the message includes the usage)
+//   plain – otherwise, the usage since the last reading
 function instantCheck(m, raw, readings, byDate) {
-  const box = document.getElementById(`warn-${m}`);
   const infoBox = document.getElementById(`info-${m}`);
-  box.textContent = '';
-  infoBox.textContent = '';
-  if (raw.length < 4) return true;          // still typing
+  const warnBox = document.getElementById(`warn-${m}`);
+  const usageBox = document.getElementById(`usage-${m}`);
+  infoBox.textContent = warnBox.textContent = usageBox.textContent = '';
+  if (raw.length < 4) return;               // still typing
   if (!/^\d{4}$/.test(raw)) {
-    box.textContent = 'Digits only, please.';
-    return false;
+    warnBox.textContent = 'Digits only, please.';
+    return;
   }
-  const { warnings, info } = checkMeter(m, Number(raw), readings, byDate);
-  box.textContent = warnings.join('\n');
+  const { warnings, info, usage } = checkMeter(m, Number(raw), readings, byDate);
   infoBox.textContent = info.join('\n');
-  return warnings.length === 0;             // information alone doesn't stop the cursor
+  warnBox.textContent = warnings.join('\n');
+  if (!warnings.length) usageBox.textContent = usage;
 }
 
-// Work out the full value for one meter and anything worth warning about.
-// Used both for the instant check and on Enter, so they always agree.
-// warnings = possible typos (stop the cursor); info = worth knowing but not a
-// sign of a mistake. Both are shown again in the confirmation on Enter.
-// Returns { full, warnings: [text], info: [text], note: text|null }.
+// Work out the full value for one meter, its usage since the last reading, and
+// anything worth warning about. Used both for the instant feedback and on
+// Enter, so they always agree.
+//   warnings – possible typos (red)
+//   info     – worth knowing but not a mistake (amber)
+// Returns { full, usage: text, warnings: [text], info: [text] }.
 function checkMeter(m, digits, readings, byDate) {
   const prev = previousReading(readings, m, date);
   const full = rollover(prev ? prev[m] : null, digits);
   const warnings = [];
   const info = [];
-  let note = null;
+  let usage = 'First reading for this meter';
 
   const existing = byDate.get(date);
   if (existing && existing[m] !== null && existing[m] !== undefined && !existing[m + '_est']
       && Math.round(existing[m]) !== full) {
-    info.push(`Replaces the saved reading ${last4(existing[m])}.`);
+    info.push(`Replaces the saved reading ${last4(existing[m])}`);
   }
 
   if (prev) {
@@ -110,21 +111,18 @@ function checkMeter(m, digits, readings, byDate) {
       recentUsages: recentRealUsages(byDate, m, date),
       nextDate: next?.date ?? null, nextFull: next ? next[m] : null,
     });
-    if (s.suspicious) {
-      const usage = s.days === 1
-        ? `${fmtNum(s.total)} kWh since ${fmtDay(prev.date)}`
-        : `${fmtNum(s.total)} kWh over ${s.days} days (${fmtNum(s.perDay, 1)}/day)`;
-      warnings.push(`${usage}: ${s.reasons.join('; ')}.`);
-    }
-    if (s.days > 1) note = `${s.days - 1} missed day${s.days > 2 ? 's' : ''} filled with estimates`;
+    usage = s.days === 1
+      ? `${fmtNum(s.total)} kWh since ${fmtDay(prev.date)}`
+      : `${fmtNum(s.total)} kWh over ${s.days} days (${fmtNum(s.perDay, 1)}/day), `
+        + `${s.days - 1} missed day${s.days > 2 ? 's' : ''} will be estimated`;
+    if (s.suspicious) warnings.push(`${usage}: ${s.reasons.join('; ')}`);
   }
-  return { full, warnings, info, note };
+  return { full, usage, warnings, info };
 }
 
 function changeDate(newDate) {
   if (!newDate || newDate > todayISO()) return;
   date = newDate;
-  resultHTML = '';
   draw();
 }
 
@@ -145,6 +143,7 @@ function meterField(m, readings, byDate) {
       <div class="hint">${hint}</div>
       <div class="info" id="info-${m}"></div>
       <div class="warn" id="warn-${m}"></div>
+      <div class="usage" id="usage-${m}"></div>
     </div>`;
 }
 
@@ -187,13 +186,11 @@ async function onEnter(readings, byDate) {
   let working = readings;        // readings including changes so far
   const toSave = new Map();      // date -> record
   const warnings = [];
-  const notes = [];
 
   for (const { m, digits } of entries) {
     // The meters are independent, so each is checked against the readings as loaded.
-    const { full, warnings: w, info, note } = checkMeter(m, digits, readings, byDate);
-    for (const text of [...info, ...w]) warnings.push(`${NAMES[m]}: ${text}`);
-    if (note) notes.push(`${NAMES[m]}: ${note}`);
+    const { full, warnings: w, info } = checkMeter(m, digits, readings, byDate);
+    for (const text of [...info, ...w]) warnings.push(`${NAMES[m]}: ${text}.`);
 
     // Gap-fill and merge into the working copy (so the next meter sees these changes).
     const changed = applyReading(working, m, date, full);
@@ -208,14 +205,5 @@ async function onEnter(readings, byDate) {
   }
 
   await putMany('readings', [...toSave.values()]);
-
-  const saved = indexByDate(working).get(date);
-  const values = METERS.filter((m) => saved[m] !== null && saved[m] !== undefined)
-    .map((m) => `${esc(NAMES[m])} ${last4(saved[m])}`).join(', ');
-  resultHTML = `
-    <div class="card ok">
-      Saved ${fmtDay(date)}: ${values}
-      ${notes.map((n) => `<div class="hint">${esc(n)}</div>`).join('')}
-    </div>`;
-  draw();
+  draw(); // redraw: boxes clear, hints show the saved values, Nova line updates
 }
