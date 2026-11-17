@@ -105,3 +105,6 @@ button:disabled { opacity: 0.5; }
 .kv { width: 100%; border-collapse: collapse; }
 .kv td { padding: 6px 0; border-bottom: 1px solid var(--border); }
 .kv td:last-child { text-align: right; font-weight: 600; }
+
+/* ---- Messages ---- */
+.error { color: var(--danger); white-space: pre-line; } /* pre-line keeps line breaks in error lists */

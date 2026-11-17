@@ -7,7 +7,7 @@
 // sw.js has changed, installs the new version, downloads fresh copies of the
 // files, and deletes the old cache.
 
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_NAME = `elecbill-${CACHE_VERSION}`;
 
 // Every file the app needs. Paths are relative to this file (works on GitHub Pages
@@ -19,6 +19,7 @@ const APP_FILES = [
   'css/styles.css',
   'js/app.js',
   'js/db.js',
+  'js/csv.js',
   'icons/icon-192.png',
   'icons/icon-512.png',
 ];

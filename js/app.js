@@ -5,7 +5,8 @@
 // hash doesn't reload the page, the browser Back button works, and it needs no
 // server support, which suits GitHub Pages.
 
-import { openDB, count, getMeta } from './db.js';
+import { openDB, count, getMeta, setMeta, replaceAll } from './db.js';
+import { parseBackup } from './csv.js';
 
 const app = document.getElementById('app');
 
@@ -53,10 +54,11 @@ const screens = {
 
   async data() {
     app.innerHTML = `<h1>Data</h1><div class="card muted">Loading…</div>`;
-    const [readings, bills, lastBackup, persisted] = await Promise.all([
+    const [readings, bills, lastBackup, lastImport, persisted] = await Promise.all([
       count('readings'),
       count('bills'),
       getMeta('lastBackup'),
+      getMeta('lastImport'),
       navigator.storage?.persisted ? navigator.storage.persisted() : false,
     ]);
     app.innerHTML = `
@@ -66,13 +68,61 @@ const screens = {
           <tr><td>Readings</td><td>${readings}</td></tr>
           <tr><td>Bills</td><td>${bills}</td></tr>
           <tr><td>Last backup</td><td>${lastBackup || 'never'}</td></tr>
+          <tr><td>Last import</td><td>${lastImport || 'never'}</td></tr>
           <tr><td>Persistent storage</td><td>${persisted ? 'yes' : 'no'}</td></tr>
         </table>
       </div>
-      <p class="muted">Import and Export are added in build steps 2 and 7.</p>
+
+      <h2>Restore from backup</h2>
+      <div class="card">
+        <p class="muted">Choose a backup CSV file. This <strong>replaces</strong> all readings and bills in the app.</p>
+        <!-- The real file input is hidden; the styled label acts as its button. -->
+        <label class="button secondary full" for="importFile">Import backup…</label>
+        <input id="importFile" type="file" accept=".csv,text/csv" hidden>
+        <p id="importMsg"></p>
+      </div>
+      <p class="muted">Export is added in build step 7.</p>
     `;
+    document.getElementById('importFile').addEventListener('change', onImportFile);
   },
 };
+
+// ---------- Import ----------
+
+async function onImportFile(event) {
+  const input = event.target;
+  const file = input.files[0];
+  input.value = ''; // so choosing the same file again still fires 'change'
+  if (!file) return;
+  const msg = document.getElementById('importMsg');
+  msg.className = '';
+
+  let data;
+  try {
+    data = parseBackup(await file.text());
+  } catch (err) {
+    msg.className = 'error';
+    msg.textContent = err.message;
+    return;
+  }
+
+  const { readings, bills } = data;
+  const range = readings.length
+    ? `${readings[0].date} to ${readings[readings.length - 1].date}`
+    : 'no readings';
+  const summary = `${readings.length} readings (${range}) and ${bills.length} bills`;
+
+  const existing = (await count('readings')) + (await count('bills'));
+  const question = existing
+    ? `Replace ALL existing data (${existing} records) with ${summary} from "${file.name}"?`
+    : `Import ${summary} from "${file.name}"?`;
+  if (!confirm(question)) return;
+
+  await replaceAll({ readings, bills });
+  await setMeta('lastImport', `${new Date().toISOString().slice(0, 10)} (${file.name})`);
+  render(); // redraw the Data screen with the new counts
+  document.getElementById('importMsg').textContent = `Imported ${summary}.`;
+}
 
 // ---------- Router ----------
 
