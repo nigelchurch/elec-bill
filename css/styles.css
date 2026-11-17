@@ -125,3 +125,9 @@ button:disabled { opacity: 0.5; }
 .usage { font-size: 0.9rem; margin-top: 4px; }
 .usage:empty { display: none; }
 .test-flag { margin: -6px 0 12px; font-size: 0.8rem; font-weight: 700; color: var(--danger); text-align: center; }
+
+/* Daily screen: centre the date and each meter column (label, box, hints, feedback). */
+#dailyForm .field,
+#dailyForm input { text-align: center; }
+#dailyForm input[type="date"] { display: flex; justify-content: center; } /* centres the date text in Chrome */
+#dailyForm #dailyMsg { text-align: center; }
