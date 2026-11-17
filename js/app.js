@@ -7,42 +7,14 @@
 
 import { openDB, count, getMeta, setMeta, replaceAll } from './db.js';
 import { parseBackup } from './csv.js';
+import { renderDaily } from './daily.js';
 
 const app = document.getElementById('app');
 
-// ---------- Screens (placeholders; filled in during later build steps) ----------
-
-function todayISO() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
+// ---------- Screens (placeholders are filled in during later build steps) ----------
 
 const screens = {
-  daily() {
-    app.innerHTML = `
-      <h1>Daily reading</h1>
-      <div class="card">
-        <div class="field">
-          <label for="date">Date</label>
-          <input id="date" type="date" value="${todayISO()}">
-        </div>
-        <div class="row">
-          <div class="field">
-            <label for="thip">Gaae&amp;Thip</label>
-            <input id="thip" inputmode="numeric" maxlength="4" placeholder="0000" autocomplete="off">
-          </div>
-          <div class="field">
-            <label for="nova">Nig&amp;Jop</label>
-            <input id="nova" inputmode="numeric" maxlength="4" placeholder="0000" autocomplete="off">
-          </div>
-        </div>
-        <button class="full" disabled>Enter</button>
-        <p class="muted">Entry is wired up in build step 4.</p>
-      </div>
-      <a href="#bill" class="button secondary full">Bill</a>
-    `;
-  },
+  daily: () => renderDaily(app),
 
   history() {
     app.innerHTML = `<h1>History</h1><div class="card muted">Coming in build step 5.</div>`;

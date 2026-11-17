@@ -68,6 +68,18 @@ export function previousReading(readings, meter, date) {
   return best;
 }
 
+// Earliest record after `date` with a real (non-estimated) value for `meter` (or null).
+// Used when logging a past date: the new value must not exceed it.
+export function nextRealReading(readings, meter, date) {
+  let best = null;
+  for (const r of readings) {
+    if (r.date > date && r[meter] !== null && r[meter] !== undefined && !r[meter + '_est']) {
+      if (!best || r.date < best.date) best = r;
+    }
+  }
+  return best;
+}
+
 // Linear interpolation for the dates strictly between two readings.
 // Returns [{ date, value }] for each missing day (empty if the dates are adjacent).
 export function interpolate(fromDate, fromValue, toDate, toValue) {

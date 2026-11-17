@@ -108,3 +108,13 @@ button:disabled { opacity: 0.5; }
 
 /* ---- Messages ---- */
 .error { color: var(--danger); white-space: pre-line; } /* pre-line keeps line breaks in error lists */
+
+/* ---- Daily screen ---- */
+.date-row { display: flex; align-items: flex-end; gap: 8px; margin-bottom: 14px; }
+.date-row .field { margin-bottom: 0; }
+.grow { flex: 1; min-width: 0; }
+.step { min-width: 52px; padding: 0; font-size: 1.6rem; }
+.hint { font-size: 0.85rem; color: var(--muted); margin-top: 4px; }
+.card.ok { border-color: var(--ok); color: var(--ok); }
+.comparison { font-size: 1.1rem; }
+#dailyMsg:empty { display: none; }

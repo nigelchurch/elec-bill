@@ -8,6 +8,7 @@ import fs from 'node:fs';
 
 import {
   addDays, daysBetween, daysInMonth, nextMonth, rollover, interpolate, applyReading,
+  previousReading, nextRealReading,
   indexByDate, usageOn, median, recentRealUsages, sanityCheck, seasonalTypical,
   yesterdayComparison, monthUsage, billSplit,
 } from '../js/calc.js';
@@ -95,6 +96,19 @@ test('applyReading: editing a real value next to a gap re-interpolates that gap'
   const v = Object.fromEntries(out.map((r) => [r.date, r.nova]));
   assert.equal(v['2026-11-02'], 120);
   assert.equal(v['2026-11-03'], 140);
+});
+
+test('previousReading / nextRealReading', () => {
+  const readings = [
+    rec('2026-11-01', 5, 100),
+    rec('2026-11-02', null, 110, false, true),
+    rec('2026-11-03', 7, 120),
+  ];
+  assert.equal(previousReading(readings, 'nova', '2026-11-03').date, '2026-11-02'); // estimates count
+  assert.equal(previousReading(readings, 'thip', '2026-11-03').date, '2026-11-01'); // skips null
+  assert.equal(previousReading(readings, 'nova', '2026-11-01'), null);
+  assert.equal(nextRealReading(readings, 'nova', '2026-11-01').date, '2026-11-03'); // skips estimate
+  assert.equal(nextRealReading(readings, 'nova', '2026-11-03'), null);
 });
 
 // ---------- Usage ----------
