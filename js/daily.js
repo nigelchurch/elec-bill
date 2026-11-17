@@ -71,30 +71,36 @@ async function draw() {
 // Show (or clear) the red warning under a box. Returns true if there is no warning.
 function instantCheck(m, raw, readings, byDate) {
   const box = document.getElementById(`warn-${m}`);
+  const infoBox = document.getElementById(`info-${m}`);
   box.textContent = '';
+  infoBox.textContent = '';
   if (raw.length < 4) return true;          // still typing
   if (!/^\d{4}$/.test(raw)) {
     box.textContent = 'Digits only, please.';
     return false;
   }
-  const { warnings } = checkMeter(m, Number(raw), readings, byDate);
+  const { warnings, info } = checkMeter(m, Number(raw), readings, byDate);
   box.textContent = warnings.join('\n');
-  return warnings.length === 0;
+  infoBox.textContent = info.join('\n');
+  return warnings.length === 0;             // information alone doesn't stop the cursor
 }
 
 // Work out the full value for one meter and anything worth warning about.
 // Used both for the instant check and on Enter, so they always agree.
-// Returns { full, warnings: [text], note: text|null }.
+// warnings = possible typos (stop the cursor); info = worth knowing but not a
+// sign of a mistake. Both are shown again in the confirmation on Enter.
+// Returns { full, warnings: [text], info: [text], note: text|null }.
 function checkMeter(m, digits, readings, byDate) {
   const prev = previousReading(readings, m, date);
   const full = rollover(prev ? prev[m] : null, digits);
   const warnings = [];
+  const info = [];
   let note = null;
 
   const existing = byDate.get(date);
   if (existing && existing[m] !== null && existing[m] !== undefined && !existing[m + '_est']
       && Math.round(existing[m]) !== full) {
-    warnings.push(`Replaces the saved reading ${last4(existing[m])}.`);
+    info.push(`Replaces the saved reading ${last4(existing[m])}.`);
   }
 
   if (prev) {
@@ -112,7 +118,7 @@ function checkMeter(m, digits, readings, byDate) {
     }
     if (s.days > 1) note = `${s.days - 1} missed day${s.days > 2 ? 's' : ''} filled with estimates`;
   }
-  return { full, warnings, note };
+  return { full, warnings, info, note };
 }
 
 function changeDate(newDate) {
@@ -137,6 +143,7 @@ function meterField(m, readings, byDate) {
       <label for="in-${m}">${esc(NAMES[m])}</label>
       <input id="in-${m}" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="0000">
       <div class="hint">${hint}</div>
+      <div class="info" id="info-${m}"></div>
       <div class="warn" id="warn-${m}"></div>
     </div>`;
 }
@@ -184,8 +191,8 @@ async function onEnter(readings, byDate) {
 
   for (const { m, digits } of entries) {
     // The meters are independent, so each is checked against the readings as loaded.
-    const { full, warnings: w, note } = checkMeter(m, digits, readings, byDate);
-    for (const text of w) warnings.push(`${NAMES[m]}: ${text}`);
+    const { full, warnings: w, info, note } = checkMeter(m, digits, readings, byDate);
+    for (const text of [...info, ...w]) warnings.push(`${NAMES[m]}: ${text}`);
     if (note) notes.push(`${NAMES[m]}: ${note}`);
 
     // Gap-fill and merge into the working copy (so the next meter sees these changes).
