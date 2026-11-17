@@ -124,3 +124,4 @@ button:disabled { opacity: 0.5; }
 .info:empty { display: none; }
 .usage { font-size: 0.9rem; margin-top: 4px; }
 .usage:empty { display: none; }
+.test-flag { margin: -6px 0 12px; font-size: 0.8rem; font-weight: 700; color: var(--danger); text-align: center; }

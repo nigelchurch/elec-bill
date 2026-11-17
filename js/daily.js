@@ -13,6 +13,10 @@ import {
 } from './calc.js';
 import { NAMES, MONTHS, todayISO, fmtDay, fmtNum, esc } from './format.js';
 
+// TESTING SWITCH: true lets you pick dates after today (for fictional future
+// readings). Set back to false before deploying.
+const ALLOW_FUTURE_DATES = true;
+
 let app;                // the <main> element
 let date;               // selected date 'YYYY-MM-DD'
 
@@ -27,6 +31,7 @@ async function draw() {
   const readings = await getAll('readings');
   const byDate = indexByDate(readings);
   const today = todayISO();
+  const maxDate = ALLOW_FUTURE_DATES ? '' : today;   // '' = no limit
 
   app.innerHTML = `
     <form id="dailyForm" class="card" autocomplete="off">
@@ -34,10 +39,11 @@ async function draw() {
         <button type="button" class="secondary step" id="prevDay" aria-label="Previous day">‹</button>
         <div class="field grow">
           <label for="date">${fmtDay(date, { year: true })}${date === today ? ' (today)' : ''}</label>
-          <input id="date" type="date" value="${date}" max="${today}" required>
+          <input id="date" type="date" value="${date}" ${maxDate ? `max="${maxDate}"` : ''} required>
         </div>
-        <button type="button" class="secondary step" id="nextDay" aria-label="Next day" ${date >= today ? 'disabled' : ''}>›</button>
+        <button type="button" class="secondary step" id="nextDay" aria-label="Next day" ${maxDate && date >= maxDate ? 'disabled' : ''}>›</button>
       </div>
+      ${ALLOW_FUTURE_DATES ? '<div class="test-flag">TEST: future dates allowed</div>' : ''}
       <div class="row">
         ${METERS.map((m) => meterField(m, readings, byDate)).join('')}
       </div>
@@ -121,7 +127,7 @@ function checkMeter(m, digits, readings, byDate) {
 }
 
 function changeDate(newDate) {
-  if (!newDate || newDate > todayISO()) return;
+  if (!newDate || (!ALLOW_FUTURE_DATES && newDate > todayISO())) return;
   date = newDate;
   draw();
 }
