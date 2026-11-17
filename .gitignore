@@ -1,0 +1,12 @@
+# Private data — never commit (the repo is public)
+BUDGET.xlsx
+*.pdf
+*.csv
+*.xlsx
+/data/
+
+# Editor / OS clutter
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
