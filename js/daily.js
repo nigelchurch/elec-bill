@@ -9,7 +9,7 @@
 import { getAll, putMany } from './db.js';
 import {
   METERS, addDays, indexByDate, rollover, previousReading, nextRealReading,
-  applyReading, sanityCheck, recentRealUsages, yesterdayComparison, last4,
+  applyReading, sanityCheck, recentRealUsages, seasonalTypical, last4,
 } from './calc.js';
 import { NAMES, MONTHS, todayISO, fmtDay, fmtNum, esc } from './format.js';
 
@@ -50,7 +50,6 @@ async function draw() {
       <button type="submit" class="full" id="enterBtn">Enter</button>
       <p id="dailyMsg" class="error"></p>
     </form>
-    ${novaComparison(byDate)}
     <a href="#bill" class="button secondary full">Bill</a>
   `;
 
@@ -124,8 +123,20 @@ function checkMeter(m, digits, readings, byDate) {
       : `${fmtNum(s.total)} kWh over ${s.days} days (${fmtNum(s.perDay, 1)}/day), `
         + `${s.days - 1} missed day${s.days > 2 ? 's' : ''} will be estimated`;
     if (s.suspicious) warnings.push(`${usage}: ${s.reasons.join('; ')}`);
+    else if (m === 'nova' && !prev.nova_est) usage += seasonal(byDate, s.perDay);
   }
   return { full, usage, warnings, info };
+}
+
+// " (Nov typical: 25, -7%)": average daily usage compared with the same month in
+// previous years (real days only). Nova only.
+function seasonal(byDate, perDay) {
+  const day = addDays(date, -1);            // the (last) day the usage belongs to
+  const month = +day.slice(5, 7);
+  const typical = seasonalTypical(byDate, 'nova', month, +day.slice(0, 4));
+  if (!typical) return '';
+  const pct = ((perDay - typical) / typical) * 100;
+  return ` (${MONTHS[month - 1]} typical: ${fmtNum(typical)}, ${pct >= 0 ? '+' : ''}${fmtNum(pct)}%)`;
 }
 
 function changeDate(newDate) {
@@ -160,21 +171,6 @@ function meterField(m, readings, byDate) {
       <div class="warn" id="warn-${m}"></div>
       <div class="usage" id="usage-${m}"></div>
     </div>`;
-}
-
-// "Nova yesterday: 23 kWh (Nov typical: 25, -7%)" – only once the selected
-// date has a Nova reading, and only if yesterday's reading was real.
-function novaComparison(byDate) {
-  const rec = byDate.get(date);
-  if (!rec || rec.nova === null || rec.nova === undefined) return '';
-  const c = yesterdayComparison(byDate, 'nova', date);
-  if (!c) return `<div class="card muted">Nova yesterday: not available (estimated day)</div>`;
-  let typical = '';
-  if (c.typical !== null) {
-    const sign = c.diffPct >= 0 ? '+' : '';
-    typical = ` <span class="muted">(${MONTHS[c.month - 1]} typical: ${fmtNum(c.typical)}, ${sign}${fmtNum(c.diffPct)}%)</span>`;
-  }
-  return `<div class="card comparison">Nova yesterday: <strong>${fmtNum(c.usage)} kWh</strong>${typical}</div>`;
 }
 
 async function onEnter(readings, byDate) {
@@ -223,5 +219,5 @@ async function onEnter(readings, byDate) {
   }
 
   await putMany('readings', [...toSave.values()]);
-  draw(); // redraw: boxes show the saved values with their usage, Nova line updates
+  draw(); // redraw: boxes show the saved values with their usage
 }
