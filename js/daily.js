@@ -64,6 +64,8 @@ async function draw() {
   // Gaae&Thip to Nig&Jop (any warning stays visible under the first box).
   for (const m of METERS) {
     const input = document.getElementById(`in-${m}`);
+    if (input.value) instantCheck(m, input.value, readings, byDate); // usage for a saved reading
+    input.addEventListener('focus', () => input.select()); // typing replaces the saved value
     input.addEventListener('input', () => {
       instantCheck(m, input.value, readings, byDate);
       if (m === 'thip' && input.value.length === 4) document.getElementById('in-nova').focus();
@@ -132,20 +134,27 @@ function changeDate(newDate) {
   draw();
 }
 
-// One input box plus a hint line: what's saved for this date, or the last reading before it.
-function meterField(m, readings, byDate) {
+// The saved reading for the selected date as 4 digits, split by type:
+// { real: '8074' | null, est: '7963' | null }.
+function savedDigits(m, byDate) {
   const rec = byDate.get(date);
-  let hint;
-  if (rec && rec[m] !== null && rec[m] !== undefined) {
-    hint = `Saved: ${last4(rec[m])}${rec[m + '_est'] ? ' <span class="est">(estimated)</span>' : ''}`;
-  } else {
-    const prev = previousReading(readings, m, date);
-    hint = prev ? `Last: ${last4(prev[m])} on ${fmtDay(prev.date)}` : 'No earlier reading';
-  }
+  if (!rec || rec[m] === null || rec[m] === undefined) return { real: null, est: null };
+  return rec[m + '_est'] ? { real: null, est: last4(rec[m]) } : { real: last4(rec[m]), est: null };
+}
+
+// One input box. A real saved reading is filled in; an estimated one is shown
+// greyed as a placeholder (so Enter can't turn it into a "real" reading by
+// accident). The hint shows the previous reading.
+function meterField(m, readings, byDate) {
+  const saved = savedDigits(m, byDate);
+  const prev = previousReading(readings, m, date);
+  let hint = prev ? `Previous: ${last4(prev[m])} on ${fmtDay(prev.date)}` : 'No earlier reading';
+  if (saved.est) hint += '<br><span class="est">Grey value is estimated: type the real reading if known</span>';
   return `
     <div class="field">
       <label for="in-${m}">${esc(NAMES[m])}</label>
-      <input id="in-${m}" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="0000">
+      <input id="in-${m}" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+             value="${saved.real ?? ''}" placeholder="${saved.est ?? '0000'}">
       <div class="hint">${hint}</div>
       <div class="info" id="info-${m}"></div>
       <div class="warn" id="warn-${m}"></div>
@@ -172,8 +181,9 @@ async function onEnter(readings, byDate) {
   const msg = document.getElementById('dailyMsg');
   msg.textContent = '';
 
-  // Read and validate the inputs.
+  // Read and validate the inputs. Boxes still showing the saved value are skipped.
   const entries = [];
+  let unchanged = 0;
   for (const m of METERS) {
     const raw = document.getElementById(`in-${m}`).value.trim();
     if (raw === '') continue;
@@ -181,10 +191,12 @@ async function onEnter(readings, byDate) {
       msg.textContent = `${NAMES[m]}: enter up to 4 digits.`;
       return;
     }
+    const { real } = savedDigits(m, byDate);
+    if (real !== null && Number(raw) === Number(real)) { unchanged++; continue; }
     entries.push({ m, digits: Number(raw) });
   }
   if (!entries.length) {
-    msg.textContent = 'Enter at least one reading.';
+    msg.textContent = unchanged ? 'No changes to save.' : 'Enter at least one reading.';
     return;
   }
 
@@ -211,5 +223,5 @@ async function onEnter(readings, byDate) {
   }
 
   await putMany('readings', [...toSave.values()]);
-  draw(); // redraw: boxes clear, hints show the saved values, Nova line updates
+  draw(); // redraw: boxes show the saved values with their usage, Nova line updates
 }
