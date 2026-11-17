@@ -118,3 +118,5 @@ button:disabled { opacity: 0.5; }
 .card.ok { border-color: var(--ok); color: var(--ok); }
 .comparison { font-size: 1.1rem; }
 #dailyMsg:empty { display: none; }
+.warn { font-size: 0.9rem; color: var(--danger); margin-top: 4px; white-space: pre-line; }
+.warn:empty { display: none; }

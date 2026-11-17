@@ -57,9 +57,62 @@ async function draw() {
   document.getElementById('prevDay').addEventListener('click', () => changeDate(addDays(date, -1)));
   document.getElementById('nextDay').addEventListener('click', () => changeDate(addDays(date, 1)));
 
-  // Jump to the second box once 4 digits are typed in the first.
-  const thip = document.getElementById('in-thip');
-  thip.addEventListener('input', () => { if (thip.value.length === 4) document.getElementById('in-nova').focus(); });
+  // Check each meter as soon as its 4th digit is typed. If Gaae&Thip looks fine,
+  // jump to Nig&Jop; if not, stay put so it can be corrected.
+  for (const m of METERS) {
+    const input = document.getElementById(`in-${m}`);
+    input.addEventListener('input', () => {
+      const ok = instantCheck(m, input.value, readings, byDate);
+      if (ok && m === 'thip' && input.value.length === 4) document.getElementById('in-nova').focus();
+    });
+  }
+}
+
+// Show (or clear) the red warning under a box. Returns true if there is no warning.
+function instantCheck(m, raw, readings, byDate) {
+  const box = document.getElementById(`warn-${m}`);
+  box.textContent = '';
+  if (raw.length < 4) return true;          // still typing
+  if (!/^\d{4}$/.test(raw)) {
+    box.textContent = 'Digits only, please.';
+    return false;
+  }
+  const { warnings } = checkMeter(m, Number(raw), readings, byDate);
+  box.textContent = warnings.join('\n');
+  return warnings.length === 0;
+}
+
+// Work out the full value for one meter and anything worth warning about.
+// Used both for the instant check and on Enter, so they always agree.
+// Returns { full, warnings: [text], note: text|null }.
+function checkMeter(m, digits, readings, byDate) {
+  const prev = previousReading(readings, m, date);
+  const full = rollover(prev ? prev[m] : null, digits);
+  const warnings = [];
+  let note = null;
+
+  const existing = byDate.get(date);
+  if (existing && existing[m] !== null && existing[m] !== undefined && !existing[m + '_est']
+      && Math.round(existing[m]) !== full) {
+    warnings.push(`Replaces the saved reading ${last4(existing[m])}.`);
+  }
+
+  if (prev) {
+    const next = nextRealReading(readings, m, date);
+    const s = sanityCheck({
+      prevDate: prev.date, prevFull: prev[m], date, newFull: full,
+      recentUsages: recentRealUsages(byDate, m, date),
+      nextDate: next?.date ?? null, nextFull: next ? next[m] : null,
+    });
+    if (s.suspicious) {
+      const usage = s.days === 1
+        ? `${fmtNum(s.total)} kWh since ${fmtDay(prev.date)}`
+        : `${fmtNum(s.total)} kWh over ${s.days} days (${fmtNum(s.perDay, 1)}/day)`;
+      warnings.push(`${usage}: ${s.reasons.join('; ')}.`);
+    }
+    if (s.days > 1) note = `${s.days - 1} missed day${s.days > 2 ? 's' : ''} filled with estimates`;
+  }
+  return { full, warnings, note };
 }
 
 function changeDate(newDate) {
@@ -84,6 +137,7 @@ function meterField(m, readings, byDate) {
       <label for="in-${m}">${esc(NAMES[m])}</label>
       <input id="in-${m}" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="0000">
       <div class="hint">${hint}</div>
+      <div class="warn" id="warn-${m}"></div>
     </div>`;
 }
 
@@ -129,31 +183,10 @@ async function onEnter(readings, byDate) {
   const notes = [];
 
   for (const { m, digits } of entries) {
-    const name = NAMES[m];
-    const prev = previousReading(working, m, date);
-    const full = rollover(prev ? prev[m] : null, digits);
-
-    const existing = byDate.get(date);
-    if (existing && existing[m] !== null && existing[m] !== undefined && !existing[m + '_est']
-        && Math.round(existing[m]) !== full) {
-      warnings.push(`${name}: replaces the saved reading ${last4(existing[m])}.`);
-    }
-
-    if (prev) {
-      const next = nextRealReading(working, m, date);
-      const s = sanityCheck({
-        prevDate: prev.date, prevFull: prev[m], date, newFull: full,
-        recentUsages: recentRealUsages(indexByDate(working), m, date),
-        nextDate: next?.date ?? null, nextFull: next ? next[m] : null,
-      });
-      const usage = s.days === 1
-        ? `${fmtNum(s.total)} kWh since ${fmtDay(prev.date)}`
-        : `${fmtNum(s.total)} kWh over ${s.days} days (${fmtNum(s.perDay, 1)}/day)`;
-      if (s.suspicious) warnings.push(`${name}: ${usage}\n  • ${s.reasons.join('\n  • ')}`);
-      if (s.days > 1) {
-        notes.push(`${name}: ${s.days - 1} missed day${s.days > 2 ? 's' : ''} filled with estimates`);
-      }
-    }
+    // The meters are independent, so each is checked against the readings as loaded.
+    const { full, warnings: w, note } = checkMeter(m, digits, readings, byDate);
+    for (const text of w) warnings.push(`${NAMES[m]}: ${text}`);
+    if (note) notes.push(`${NAMES[m]}: ${note}`);
 
     // Gap-fill and merge into the working copy (so the next meter sees these changes).
     const changed = applyReading(working, m, date, full);
