@@ -3,22 +3,22 @@
 //
 // Navigation uses the URL "hash" (#daily, #history, #bill, #data). Changing the
 // hash doesn't reload the page, the browser Back button works, and it needs no
-// server support, which suits GitHub Pages.
+// server support, which suits GitHub Pages. A screen can take parameters after
+// a '?', e.g. #daily?date=2026-11-10 (used by History to open a day for editing).
 
 import { openDB, count, getMeta, setMeta, replaceAll } from './db.js';
 import { parseBackup } from './csv.js';
 import { renderDaily } from './daily.js';
+import { renderHistory } from './history.js';
 
 const app = document.getElementById('app');
 
 // ---------- Screens (placeholders are filled in during later build steps) ----------
 
 const screens = {
-  daily: () => renderDaily(app),
+  daily: (params) => renderDaily(app, params.get('date')),
 
-  history() {
-    app.innerHTML = `<h1>History</h1><div class="card muted">Coming in build step 5.</div>`;
-  },
+  history: () => renderHistory(app),
 
   bill() {
     app.innerHTML = `<h1>Bill</h1><div class="card muted">Coming in build step 6.</div>`;
@@ -99,12 +99,13 @@ async function onImportFile(event) {
 // ---------- Router ----------
 
 function render() {
-  const name = location.hash.slice(1) || 'daily';
+  const [name = 'daily', query = ''] = location.hash.slice(1).split('?');
+  const params = new URLSearchParams(query);
   const screen = screens[name] || screens.daily;
   document.querySelectorAll('[data-nav]').forEach((a) => {
     a.classList.toggle('active', a.dataset.nav === name);
   });
-  return screen(); // returns a Promise for async screens, so callers can await the redraw
+  return screen(params); // returns a Promise for async screens, so callers can await the redraw
 }
 
 window.addEventListener('hashchange', render);

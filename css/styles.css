@@ -131,3 +131,18 @@ button:disabled { opacity: 0.5; }
 #dailyForm input { text-align: center; }
 #dailyForm input[type="date"] { display: flex; justify-content: center; } /* centres the date text in Chrome */
 #dailyForm #dailyMsg { text-align: center; }
+
+/* ---- History screen ---- */
+.small { font-size: 0.85rem; }
+.table-card { padding: 0; overflow-x: auto; }      /* table goes edge to edge inside the card */
+.hist { width: 100%; border-collapse: collapse; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+.hist th, .hist td { padding: 7px 3px; text-align: center; white-space: nowrap; }
+.hist thead th { background: var(--blue); color: #fff; font-weight: 600; font-size: 0.75rem; }
+.hist tr.month th { background: var(--blue-light); color: var(--blue); text-align: left; padding: 6px 10px; }
+.hist tbody tr[data-date] { border-bottom: 1px solid var(--border); cursor: pointer; }
+.hist tbody tr[data-date]:active { background: var(--blue-light); }   /* feedback while tapping */
+.hist td.day { color: var(--muted); }
+.hist .use { border-left: 1px solid var(--border); }
+.hist .use + .use { border-left: none; }
+.hist td.est { color: var(--est); font-style: italic; }
+.hist tr.highlight { background: #fff3c4; }

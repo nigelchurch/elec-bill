@@ -19,11 +19,14 @@ const ALLOW_FUTURE_DATES = true;
 
 let app;                // the <main> element
 let date;               // selected date 'YYYY-MM-DD'
+let fromHistory;        // opened by tapping a row on the History screen
 
-// Called by the router each time the screen is opened: start on today.
-export function renderDaily(container) {
+// Called by the router each time the screen is opened: start on today, or on
+// the date given (when History opens a day for editing).
+export function renderDaily(container, startDate = null) {
   app = container;
-  date = todayISO();
+  fromHistory = /^\d{4}-\d{2}-\d{2}$/.test(startDate || '');
+  date = fromHistory ? startDate : todayISO();
   return draw();
 }
 
@@ -50,8 +53,13 @@ async function draw() {
       <button type="submit" class="full" id="enterBtn">Enter</button>
       <p id="dailyMsg" class="error"></p>
     </form>
-    <a href="#bill" class="button secondary full">Bill</a>
+    ${fromHistory
+      ? '<button type="button" class="secondary full" id="backBtn">‹ Back to History</button>'
+      : '<a href="#bill" class="button secondary full">Bill</a>'}
   `;
+  // Going "back" (rather than linking to #history) keeps the browser history tidy,
+  // so the phone's Back gesture behaves the same way.
+  document.getElementById('backBtn')?.addEventListener('click', () => history.back());
 
   const form = document.getElementById('dailyForm');
   form.addEventListener('submit', (e) => { e.preventDefault(); onEnter(readings, byDate); });
