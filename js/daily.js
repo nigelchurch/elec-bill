@@ -53,9 +53,7 @@ async function draw() {
       <button type="submit" class="full" id="enterBtn">Enter</button>
       <p id="dailyMsg" class="error"></p>
     </form>
-    ${fromHistory
-      ? '<button type="button" class="secondary full" id="backBtn">‹ Back to History</button>'
-      : '<a href="#bill" class="button secondary full">Bill</a>'}
+    ${fromHistory ? '<button type="button" class="secondary full" id="backBtn">‹ Back to History</button>' : ''}
   `;
   // Going "back" (rather than linking to #history) keeps the browser history tidy,
   // so the phone's Back gesture behaves the same way.

@@ -176,3 +176,19 @@ dialog.summary { border: none; border-radius: var(--radius); padding: 20px; widt
 dialog.summary::backdrop { background: rgba(0, 0, 0, 0.45); }
 dialog.summary h2 { margin-top: 0; }
 .rate-high, .kv td.rate-high { color: var(--danger); font-weight: 700; } /* beats .kv td:last-child */
+
+/* ---- Top bar menu: links inline, or a ☰ drop-down when they don't fit ---- */
+.topbar { position: sticky; }            /* (already sticky) anchor for the drop-down */
+.topbar nav { flex-shrink: 0; }          /* never squash the links: overflow triggers the menu */
+.topbar nav a { white-space: nowrap; }
+.menu-btn { display: none; min-height: 44px; padding: 4px 14px; font-size: 1.5rem;
+            background: transparent; color: #fff; }
+.topbar.collapsed .menu-btn { display: block; }
+.topbar.collapsed nav { display: none; }
+.topbar.collapsed.menu-open nav {
+  display: flex; flex-direction: column; position: absolute; top: 100%; right: 8px;
+  min-width: 160px; padding: 6px; background: var(--blue); border-radius: 0 0 var(--radius) var(--radius);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.25);
+}
+.topbar.collapsed.menu-open nav a { padding: 12px 14px; font-size: 1.05rem; }
+.topbar .title { white-space: nowrap; }  /* never wrap: overflow is what triggers the menu */

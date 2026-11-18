@@ -111,15 +111,33 @@ window.addEventListener('hashchange', render);
 
 // ---------- Start-up ----------
 
-// Publish the top bar's height as a CSS variable (--topbar-h), so the frozen
-// History table heading can sit just below it. It changes with the phone's
-// status-bar space when installed, and when the Fold is opened or rotated.
+// Top bar layout, re-checked at start-up and whenever the screen size changes
+// (e.g. the Fold opened or closed):
+//  - If the links don't fit beside the title, collapse them into a ☰ menu.
+//  - Publish the bar's height as a CSS variable (--topbar-h), so the frozen
+//    History table heading can sit just below it.
+const topbar = document.querySelector('.topbar');
+const menuBtn = document.getElementById('menuBtn');
+
 function measureTopbar() {
-  const h = document.querySelector('.topbar').offsetHeight;
-  document.documentElement.style.setProperty('--topbar-h', `${h}px`);
+  topbar.classList.remove('collapsed', 'menu-open');
+  menuBtn.setAttribute('aria-expanded', 'false');
+  if (topbar.scrollWidth > topbar.clientWidth) topbar.classList.add('collapsed');
+  document.documentElement.style.setProperty('--topbar-h', `${topbar.offsetHeight}px`);
 }
 measureTopbar();
 window.addEventListener('resize', measureTopbar);
+
+function closeMenu() {
+  topbar.classList.remove('menu-open');
+  menuBtn.setAttribute('aria-expanded', 'false');
+}
+menuBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const open = topbar.classList.toggle('menu-open');
+  menuBtn.setAttribute('aria-expanded', String(open));
+});
+document.addEventListener('click', closeMenu); // tapping a link or anywhere else closes it
 
 async function start() {
   await openDB();
