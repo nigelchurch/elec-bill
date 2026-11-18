@@ -1,8 +1,8 @@
 // Bill screen: enter the utility bill figures for a month, then Generate:
 //   1. check there is a reading for every day from the 1st to the 1st of next month
 //   2. calculate the split and save the bill record
-//   3. build the PDF and open it in a new tab
-// The result then offers Share PDF (share sheet), Open PDF and Save PDF (to Downloads).
+//   3. build the PDF and show a preview of it on the screen
+// The result then offers Share PDF (share sheet) and Save PDF (to Downloads).
 // Each of those is its own tap, so only one dialog ever appears at a time.
 
 import { getAll, get, put, getMeta } from './db.js';
@@ -145,24 +145,18 @@ async function generate() {
     return;
   }
 
-  // Open the new tab now, while this still counts as the user's tap; browsers
-  // block tabs opened later by code. The PDF is put into it once it's built.
-  const tab = window.open('', '_blank');
   try {
     await put('bills', { month, ...values });
     const blob = await pdfBlob(bill);
-    const url = URL.createObjectURL(blob);
-    if (tab) tab.location.href = url;
-    await showResult(bill, blob, url, !!tab);
+    await showResult(bill, blob);
     await drawList();
   } catch (err) {
-    tab?.close();
     msg.textContent = `Something went wrong: ${err.message}`;
   }
 }
 
-// Summary of the split, with buttons to open, share or save the PDF.
-async function showResult(bill, blob, url, opened) {
+// Summary of the split, Share / Save buttons, and a preview of the PDF itself.
+async function showResult(bill, blob) {
   const s = bill.split;
   const filename = pdfFilename(bill.month);
   const lastBackup = await getMeta('lastBackup');
@@ -176,21 +170,42 @@ async function showResult(bill, blob, url, opened) {
         <tr><td>${esc(NAMES.nova)} (B) · ${fmtNum(bill.novaUnits)} kWh</td><td>${fmtNum(s.B)} Baht</td></tr>
         <tr><td>Boy&amp;Yui</td><td>${fmtNum(s.boyYui)} Baht</td></tr>
       </table>
-      <p class="hint">${opened ? 'The PDF has opened in a new tab.' : 'Bill saved. Tap Open PDF to view it.'}</p>
-      <button type="button" class="full" id="shareBtn">Share PDF</button>
       <div class="row btn-row">
-        <button type="button" class="secondary" id="openBtn">Open PDF</button>
+        <button type="button" id="shareBtn">Share PDF</button>
         <button type="button" class="secondary" id="saveBtn">Save PDF</button>
       </div>
       <p class="hint">Last backup: ${lastBackup || 'never'}. <a href="#data">Back up on the Data screen</a></p>
+      <div class="preview" id="preview"><p class="hint">Preparing preview…</p></div>
     </div>`;
   document.getElementById('shareBtn').addEventListener('click', async () => {
-    const r = await shareFile(blob, filename, `Electricity bill ${fmtMonth(bill.month)}`);
+    const r = await shareFile(blob, filename);
     if (r === 'unavailable') alert('Sharing is not available in this browser. Use Save PDF instead.');
   });
-  document.getElementById('openBtn').addEventListener('click', () => window.open(url, '_blank'));
   document.getElementById('saveBtn').addEventListener('click', () => downloadBlob(blob, filename));
   result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  renderPreview(blob, document.getElementById('preview'));
+}
+
+// Draw page 1 of the PDF into the page with pdf.js (Mozilla's PDF viewer, in
+// lib/), so it can be checked without opening another app or tab.
+async function renderPreview(blob, container) {
+  try {
+    const pdfjs = await import('../lib/pdf.min.js');
+    pdfjs.GlobalWorkerOptions.workerSrc = 'lib/pdf.worker.min.js'; // does the work in the background
+    const pdf = await pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()) }).promise;
+    const page = await pdf.getPage(1);
+    // Draw at 2× the screen's resolution so it stays sharp when pinch-zoomed.
+    const cssWidth = container.clientWidth;
+    const scale = (cssWidth / page.getViewport({ scale: 1 }).width) * (window.devicePixelRatio || 1) * 2;
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+    await page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport }).promise;
+    container.replaceChildren(canvas);
+  } catch (err) {
+    container.innerHTML = `<p class="hint">Preview not available (${esc(err.message)}). Use Save PDF to view it.</p>`;
+  }
 }
 
 // Saved bills, newest first. Bills made in the app can be re-shared or
@@ -231,7 +246,7 @@ async function reshare(m) {
   }
   const blob = await pdfBlob(bill);
   const filename = pdfFilename(m);
-  const r = await shareFile(blob, filename, `Electricity bill ${fmtMonth(m)}`);
+  const r = await shareFile(blob, filename);
   if (r === 'unavailable') {
     downloadBlob(blob, filename);
     alert(`Sharing is not available here, so ${filename} was saved to Downloads instead.`);

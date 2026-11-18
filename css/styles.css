@@ -162,3 +162,6 @@ button:disabled { opacity: 0.5; }
 .older summary { padding: 12px 0 4px; color: var(--muted); cursor: pointer; }
 .older .bill-item { font-size: 0.9rem; color: var(--muted); padding: 6px 0; }
 .btn-row { margin-top: 10px; }
+.btn-row > button { width: 100%; }
+.preview { margin-top: 12px; border: 1px solid var(--border); background: #fff; }
+.preview canvas { display: block; width: 100%; height: auto; }

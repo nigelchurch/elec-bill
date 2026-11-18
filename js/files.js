@@ -30,13 +30,14 @@ export async function downloadBackup() {
 }
 
 // Open the Android share sheet with a file (e.g. to send the PDF via LINE).
-// Returns 'shared', 'cancelled', or 'unavailable' (the caller then shows a
-// "Share PDF" button, as sharing needs a fresh tap if the first try fails).
-export async function shareFile(blob, filename, title) {
+// Returns 'shared', 'cancelled', or 'unavailable'.
+// Only the file is sent (no title or text): some share targets, e.g. LINE and
+// mail on Windows, may ignore a share that carries both.
+export async function shareFile(blob, filename) {
   const file = new File([blob], filename, { type: blob.type });
   if (!navigator.canShare || !navigator.canShare({ files: [file] })) return 'unavailable';
   try {
-    await navigator.share({ files: [file], title });
+    await navigator.share({ files: [file] });
     return 'shared';
   } catch (err) {
     return err.name === 'AbortError' ? 'cancelled' : 'unavailable';

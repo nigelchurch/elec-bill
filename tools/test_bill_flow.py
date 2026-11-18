@@ -35,17 +35,18 @@ with app_session(SCREENS["outer"]) as page:
     for key, value in [("P", "3,840.30"), ("OP", "1766.54"), ("H", "3529.1"), ("total_baht", "39,389.23")]:
         page.fill(f"#f-{key}", value)
 
-    # Generate opens a new tab with the PDF.
-    with page.context.expect_page() as new_tab:
-        page.click("#billForm button[type=submit]")
-    tab = new_tab.value
-    tab.wait_for_load_state()
+    # Generate shows the summary and a preview of the PDF, with no tab or download.
+    pages_before = len(page.context.pages)
+    page.click("#billForm button[type=submit]")
     page.wait_for_selector("#billResult table")
-    check("Generate opens the PDF in a new tab", tab.url.startswith("blob:"), tab.url)
+    page.wait_for_selector("#preview canvas", timeout=15000)
+    check("Generate opens no new tab", len(page.context.pages) == pages_before)
     check("Generate downloads nothing", not downloads, [d.suggested_filename for d in downloads])
     cells = page.locator("#billResult td").all_text_contents()
     check("Split A / B / Boy&Yui", ["590 Baht", "2,368 Baht", "36,431 Baht"] == [cells[5], cells[7], cells[9]], cells)
-    tab.close()
+    size = page.evaluate("() => { const c = document.querySelector('#preview canvas'); return [c.width, c.height, c.clientWidth]; }")
+    check("PDF preview drawn", size[0] > 500 and size[1] > size[0], size)
+    page.locator("#preview").screenshot(path=str(OUT / "bill-preview-outer.png"))
 
     # Save PDF downloads it with the proper name.
     with page.expect_download() as dl:
