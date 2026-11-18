@@ -8,6 +8,7 @@ It also starts its own small web server, so Live Server isn't needed.
 Quick use, from the project folder:
     python tools/browser.py                  # screenshots of the main screens
     python tools/browser.py --out shots      # choose the output folder
+    python tools/browser.py --check          # PWA checks: service worker, cache, DB, installable, offline
 
 From another script:
     from browser import app_session, SCREENS
@@ -20,6 +21,7 @@ import argparse
 import functools
 import http.server
 import socketserver
+import tempfile
 import threading
 from contextlib import contextmanager
 from pathlib import Path
@@ -61,10 +63,14 @@ def app_session(viewport=SCREENS["outer"], import_data=True, headless=True):
     """Open the app in a fresh Edge profile. Yields a Playwright page with
     page.base (the app URL) and page.errors (JavaScript errors seen so far).
     With import_data, data/initial-import.csv is imported via the Data screen."""
-    with static_server() as base, sync_playwright() as p:
-        browser = p.chromium.launch(channel="msedge", headless=headless)
-        context = browser.new_context(viewport=viewport, device_scale_factor=2, is_mobile=True, has_touch=True)
-        page = context.new_page()
+    # A temporary real profile (deleted afterwards). Playwright's default throwaway
+    # context counts as private browsing, where Edge refuses to install apps.
+    with static_server() as base, sync_playwright() as p, tempfile.TemporaryDirectory() as profile:
+        context = p.chromium.launch_persistent_context(
+            profile, channel="msedge", headless=headless,
+            viewport=viewport, device_scale_factor=2, is_mobile=True, has_touch=True)
+        browser = context  # closing the context closes the browser
+        page = context.pages[0] if context.pages else context.new_page()
         page.base = base
         page.errors = []
         page.on("pageerror", lambda e: page.errors.append(str(e)))
@@ -86,11 +92,69 @@ def app_session(viewport=SCREENS["outer"], import_data=True, headless=True):
             browser.close()
 
 
+def pwa_checks():
+    """The step-1 DevTools checks, automated. Prints PASS/FAIL for each; returns True if all pass."""
+    results = []
+
+    def check(name, ok, detail=""):
+        results.append(ok)
+        print(f"{'PASS' if ok else 'FAIL'}  {name}{'  - ' + str(detail) if detail else ''}")
+
+    with app_session(import_data=False) as page:
+        # Service worker: the page is controlled by it once it has activated.
+        page.wait_for_function("navigator.serviceWorker.controller !== null || navigator.serviceWorker.ready", timeout=10000)
+        state = page.evaluate("navigator.serviceWorker.ready.then(r => r.active && r.active.state)")
+        check("Service worker active", state == "activated", state)
+
+        # Cache storage: the current cache lists every app file.
+        sw_src = (ROOT / "sw.js").read_text(encoding="utf-8")
+        cache = page.evaluate("""async () => {
+            const keys = await caches.keys();
+            const name = keys.find(k => k.startsWith('elecbill-'));
+            if (!name) return { keys };
+            const reqs = await (await caches.open(name)).keys();
+            return { keys, name, files: reqs.map(r => new URL(r.url).pathname) };
+        }""")
+        check("One app cache", len(cache["keys"]) == 1, cache["keys"])
+        listed = [line.strip().strip("',") for line in sw_src.split("APP_FILES = [")[1].split("]")[0].splitlines()
+                  if line.strip().startswith("'")]
+        missing = [f for f in listed if f != "./" and "/" + f not in cache.get("files", [])]
+        check("All APP_FILES cached", not missing, missing or f"{len(listed)} files in {cache.get('name')}")
+        js_files = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "js").glob("*.js"))
+        unlisted = [f for f in js_files if f not in listed]
+        check("Every js/*.js is in APP_FILES", not unlisted, unlisted)
+
+        # IndexedDB: database and its three stores exist.
+        stores = page.evaluate("""() => new Promise(res => {
+            const r = indexedDB.open('elecbill');
+            r.onsuccess = () => res([...r.result.objectStoreNames]);
+        })""")
+        check("IndexedDB stores", sorted(stores) == ["bills", "meta", "readings"], stores)
+
+        # Manifest / installability, as Edge itself judges it.
+        cdp = page.context.new_cdp_session(page)
+        errs = cdp.send("Page.getInstallabilityErrors")["installabilityErrors"]
+        check("Installable (no manifest/installability errors)", not errs, [e["errorId"] for e in errs])
+
+        # Offline: cut the network and reload; the app must still appear.
+        page.context.set_offline(True)
+        page.reload()
+        page.wait_for_selector("#dailyForm", timeout=10000)
+        check("Works offline", True)
+        page.context.set_offline(False)
+
+        check("No JavaScript errors", not page.errors, page.errors)
+    return all(results)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--out", default=str(ROOT / "data" / "screenshots"),
                     help="output folder (default data/screenshots, which git ignores)")
+    ap.add_argument("--check", action="store_true", help="run the PWA checks instead of screenshots")
     args = ap.parse_args()
+    if args.check:
+        raise SystemExit(0 if pwa_checks() else 1)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
