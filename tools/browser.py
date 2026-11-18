@@ -67,7 +67,7 @@ def app_session(viewport=SCREENS["outer"], import_data=True, headless=True, url=
     url: test a deployed copy (e.g. GitHub Pages) instead of the local files."""
     # A temporary real profile (deleted afterwards). Playwright's default throwaway
     # context counts as private browsing, where Edge refuses to install apps.
-    with static_server() as local, sync_playwright() as p, tempfile.TemporaryDirectory() as profile:
+    with static_server() as local, sync_playwright() as p, tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as profile:
         base = url or local
         context = p.chromium.launch_persistent_context(
             profile, channel="msedge", headless=headless,

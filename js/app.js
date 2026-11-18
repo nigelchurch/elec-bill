@@ -125,10 +125,27 @@ async function onImportFile(event) {
 
 // ---------- Router ----------
 
+// Which screen the URL hash names ('daily' if none or unknown).
+function currentScreen() {
+  const name = location.hash.slice(1).split('?')[0];
+  return screens[name] ? name : 'daily';
+}
+
+let slideDirection = 0; // set by a swipe: +1 = next page, -1 = previous
+
 function render() {
-  const [name = 'daily', query = ''] = location.hash.slice(1).split('?');
+  const query = location.hash.split('?')[1] || '';
+  const name = currentScreen();
   const params = new URLSearchParams(query);
-  const screen = screens[name] || screens.daily;
+  const screen = screens[name];
+  if (slideDirection) {
+    // Restart the slide-in animation (removing the class and reading a layout
+    // value makes the browser forget the previous run).
+    app.classList.remove('slide-next', 'slide-prev');
+    void app.offsetWidth;
+    app.classList.add(slideDirection > 0 ? 'slide-next' : 'slide-prev');
+    slideDirection = 0;
+  }
   document.querySelectorAll('[data-nav]').forEach((a) => {
     a.classList.toggle('active', a.dataset.nav === name);
   });
@@ -136,6 +153,37 @@ function render() {
 }
 
 window.addEventListener('hashchange', render);
+
+// ---------- Swipe between screens ----------
+// Swipe left for the next screen, right for the previous, in top-bar order.
+// Only a quick, clearly sideways swipe counts, so scrolling up and down is
+// unaffected. Ignored inside the zoomed PDF preview (where sideways scrolls it)
+// and in pop-ups.
+
+const ORDER = ['daily', 'bill', 'history', 'data'];
+const SWIPE = { MIN_DX: 70, MAX_MS: 700 }; // at least 70 px sideways, within 0.7 s
+let touchStart = null;
+
+document.addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  touchStart = e.touches.length === 1 && !e.target.closest('.preview.zoomed, dialog')
+    ? { x: t.clientX, y: t.clientY, time: Date.now() }
+    : null;
+}, { passive: true }); // passive: we never block scrolling
+
+document.addEventListener('touchend', (e) => {
+  if (!touchStart) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  const quick = Date.now() - touchStart.time < SWIPE.MAX_MS;
+  touchStart = null;
+  if (!quick || Math.abs(dx) < SWIPE.MIN_DX || Math.abs(dx) < 2 * Math.abs(dy)) return;
+  const next = ORDER.indexOf(currentScreen()) + (dx < 0 ? 1 : -1);
+  if (next < 0 || next >= ORDER.length) return; // already at the first / last screen
+  slideDirection = dx < 0 ? 1 : -1;
+  location.hash = `#${ORDER[next]}`;
+}, { passive: true });
 
 // ---------- Start-up ----------
 
