@@ -112,6 +112,16 @@ window.addEventListener('hashchange', render);
 
 // ---------- Start-up ----------
 
+// Publish the top bar's height as a CSS variable (--topbar-h), so the frozen
+// History table heading can sit just below it. It changes with the phone's
+// status-bar space when installed, and when the Fold is opened or rotated.
+function measureTopbar() {
+  const h = document.querySelector('.topbar').offsetHeight;
+  document.documentElement.style.setProperty('--topbar-h', `${h}px`);
+}
+measureTopbar();
+window.addEventListener('resize', measureTopbar);
+
 async function start() {
   await openDB();
 
