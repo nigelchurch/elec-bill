@@ -15,7 +15,7 @@ import { NAMES, MONTHS, todayISO, fmtDay, fmtNum, esc } from './format.js';
 
 // TESTING SWITCH: true lets you pick dates after today (for fictional future
 // readings). Set back to false before deploying.
-const ALLOW_FUTURE_DATES = true;
+const ALLOW_FUTURE_DATES = false;
 
 let app;                // the <main> element
 let date;               // selected date 'YYYY-MM-DD'

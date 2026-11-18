@@ -13,3 +13,6 @@ desktop.ini
 
 # Python cache
 __pycache__/
+
+# Project spec: kept on this PC only (contains personal details)
+CLAUDE.md
