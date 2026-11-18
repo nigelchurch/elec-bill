@@ -66,7 +66,7 @@ with app_session(SCREENS["outer"], url=args.url) as setup:
     check("Swipes, then Back: Daily", screen() == "daily", screen())
 
     tap("history")
-    page.wait_for_selector("table.hist tr[data-date]")
+    page.locator("table.hist tr.month").first.click()   # months start closed
     page.locator("table.hist tr[data-date]").nth(3).click()
     page.wait_for_selector("#backBtn")
     edit = screen()

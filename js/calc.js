@@ -152,6 +152,13 @@ export function usageOn(byDate, meter, date) {
   return { usage: b[meter] - a[meter], est: !!(a[meter + '_est'] || b[meter + '_est']) };
 }
 
+// Average daily usage over `dates` for one meter, counting only measured days
+// (both readings real, i.e. neither estimated). null if there are none.
+export function measuredAverage(byDate, meter, dates) {
+  const used = dates.map((d) => usageOn(byDate, meter, d)).filter((u) => u && !u.est);
+  return used.length ? used.reduce((sum, u) => sum + u.usage, 0) / used.length : null;
+}
+
 export function median(values) {
   if (!values.length) return null;
   const s = [...values].sort((a, b) => a - b);

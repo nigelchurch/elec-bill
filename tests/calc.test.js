@@ -10,7 +10,7 @@ import {
   addDays, daysBetween, daysInMonth, nextMonth, rollover, interpolate, applyReading,
   previousReading, nextRealReading,
   indexByDate, usageOn, median, recentRealUsages, sanityCheck, seasonalTypical,
-  yesterdayComparison, monthUsage, billSplit, billRows,
+  yesterdayComparison, monthUsage, billSplit, billRows, measuredAverage,
 } from '../js/calc.js';
 import { parseBackup } from '../js/csv.js';
 
@@ -228,4 +228,17 @@ test('recent real usages skip estimated days', { skip: !haveData && 'no data' },
   const r = recentRealUsages(byDate, 'nova', '2023-03-01', 3);
   assert.equal(r.length, 3);
   assert.ok(r.every((x) => Number.isInteger(x)));
+});
+
+test('measuredAverage: average daily usage of measured days only', () => {
+  const byDate = indexByDate([
+    { date: '2026-01-01', thip: 100, nova: 1000 },
+    { date: '2026-01-02', thip: 102, nova: 1020 },               // usage 1 Jan: 2, 20
+    { date: '2026-01-03', thip: 104, nova: 1050, nova_est: 1 },  // 2 Jan: 2, (30 est)
+    { date: '2026-01-04', thip: 110, nova: 1080 },               // 3 Jan: 6, (30 est)
+  ]);
+  const days = ['2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04']; // 4 Jan has no next reading
+  assert.equal(measuredAverage(byDate, 'thip', days), 10 / 3);
+  assert.equal(measuredAverage(byDate, 'nova', days), 20);
+  assert.equal(measuredAverage(byDate, 'nova', ['2026-01-02']), null);
 });

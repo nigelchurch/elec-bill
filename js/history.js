@@ -1,14 +1,15 @@
-// History screen: every day's readings and usage, newest first, grouped by month.
-// Tapping a row opens the Daily screen on that date, which already handles
+// History screen: every day's readings and usage, newest first, grouped by
+// month. Each month starts collapsed, showing only its heading with the
+// average daily usage of its measured days; tap the heading to open it.
+// Tapping a day opens the Daily screen on that date, which already handles
 // editing, sanity checks and re-interpolating neighbouring estimated days.
 
 import { navigate } from './nav.js';
 import { getAll } from './db.js';
-import { indexByDate, usageOn, METERS, last4, roundHalfUp } from './calc.js';
+import { indexByDate, usageOn, measuredAverage, METERS, last4, roundHalfUp } from './calc.js';
 import { MONTHS, DAYS, NAMES, esc } from './format.js';
 
-const PAGE = 120;        // rows shown at first; "Show older" adds a year at a time
-let shown = PAGE;
+const open = new Set();  // months the user has opened ('YYYY-MM'), kept while the app runs
 let lastOpened = null;   // date of the row last tapped, to scroll back to it
 
 export async function renderHistory(app) {
@@ -19,48 +20,62 @@ export async function renderHistory(app) {
     return;
   }
   const byDate = indexByDate(readings);
-  const rows = readings.slice().reverse().slice(0, shown); // newest first
+  if (lastOpened) open.add(lastOpened.slice(0, 7)); // coming back from an edit: keep its month open
 
-  let body = '';
-  let month = '';
-  for (const r of rows) {
+  // Group the days by month, newest first.
+  const months = new Map();
+  for (const r of readings.slice().reverse()) {
     const ym = r.date.slice(0, 7);
-    if (ym !== month) {   // month heading row
-      month = ym;
-      body += `<tr class="month"><th colspan="6">${MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}</th></tr>`;
-    }
-    body += rowHTML(r, byDate);
+    if (!months.has(ym)) months.set(ym, []);
+    months.get(ym).push(r);
   }
 
-  const more = readings.length > shown
-    ? `<button class="secondary full" id="showOlder">Show older (${readings.length - shown} more days)</button>`
-    : '';
+  // One <tbody> per month: its heading row, then its days (hidden until opened).
+  let body = '';
+  for (const [ym, rows] of months) {
+    const dates = rows.map((r) => r.date);
+    const avgs = METERS.map((m) => {
+      const a = measuredAverage(byDate, m, dates);
+      return `<th class="use avg">${a === null ? '–' : a.toFixed(1)}</th>`;
+    });
+    const isOpen = open.has(ym);
+    body += `<tbody data-month="${ym}" class="${isOpen ? 'open' : ''}">
+      <tr class="month" aria-expanded="${isOpen}">
+        <th colspan="4"><span class="chev" aria-hidden="true"></span>${MONTHS[+ym.slice(5) - 1]} ${ym.slice(0, 4)}</th>
+        ${avgs.join('')}
+      </tr>
+      ${rows.map((r) => rowHTML(r, byDate)).join('')}
+    </tbody>`;
+  }
 
   app.innerHTML = `
     <h1>History</h1>
-    <p class="muted small"><span class="est">Italic</span> = estimated. Tap a day to edit it.</p>
+    <p class="muted small">Tap a month to open it, a day to edit it. Month figures: average kWh/day of measured days. <span class="est">Italic</span> = estimated.</p>
     <div class="card table-card">
       <table class="hist">
         <thead>
           <tr><th colspan="2" rowspan="2">Date</th><th colspan="2">Reading</th><th colspan="2">Usage (kWh)</th></tr>
           <tr>${METERS.map((m) => `<th>${esc(NAMES[m])}</th>`).join('')}${METERS.map((m) => `<th class="use">${esc(NAMES[m])}</th>`).join('')}</tr>
         </thead>
-        <tbody>${body}</tbody>
+        ${body}
       </table>
     </div>
-    ${more}
   `;
 
   // One click handler for the whole table ("event delegation"), not one per row.
-  app.querySelector('tbody').addEventListener('click', (e) => {
+  app.querySelector('table.hist').addEventListener('click', (e) => {
+    const heading = e.target.closest('tr.month');
+    if (heading) {
+      const tbody = heading.parentElement;
+      const nowOpen = tbody.classList.toggle('open');
+      heading.setAttribute('aria-expanded', String(nowOpen));
+      if (nowOpen) open.add(tbody.dataset.month); else open.delete(tbody.dataset.month);
+      return;
+    }
     const tr = e.target.closest('tr[data-date]');
     if (!tr) return;
     lastOpened = tr.dataset.date;
     navigate(`#daily?date=${tr.dataset.date}`, { edit: true }); // Back returns here
-  });
-  document.getElementById('showOlder')?.addEventListener('click', () => {
-    shown += 365;
-    renderHistory(app);
   });
 
   // Coming back from an edit: scroll to that row and highlight it.

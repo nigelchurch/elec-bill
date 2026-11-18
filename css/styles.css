@@ -142,7 +142,16 @@ button:disabled { opacity: 0.5; }
 .hist { width: 100%; border-collapse: collapse; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 .hist th, .hist td { padding: 7px 3px; text-align: center; white-space: nowrap; }
 .hist thead th { background: var(--blue); color: #fff; font-weight: 600; font-size: 0.75rem; }
-.hist tr.month th { background: var(--blue-light); color: var(--blue); text-align: left; padding: 6px 10px; }
+.hist tr.month { cursor: pointer; border-bottom: 1px solid #fff; }
+.hist tr.month th { background: var(--blue-light); color: var(--blue); text-align: left; padding: 10px 10px; }
+.hist tr.month th.avg { text-align: center; padding: 10px 3px; font-weight: 600; }
+/* The arrow is a small square with two borders, turned to point right (closed)
+   or down (open). */
+.hist tr.month .chev { display: inline-block; width: 0.45em; height: 0.45em; margin: 0 0.75em 0.12em 0.15em;
+  border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg); transition: transform 0.2s; }
+.hist tbody.open tr.month .chev { transform: rotate(45deg); }
+.hist tbody:not(.open) tr[data-date] { display: none; }   /* a closed month shows only its heading */
 .hist tbody tr[data-date] { border-bottom: 1px solid var(--border); cursor: pointer; }
 .hist tbody tr[data-date]:active { background: var(--blue-light); }   /* feedback while tapping */
 .hist td.day { color: var(--muted); }
