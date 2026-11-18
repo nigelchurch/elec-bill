@@ -192,3 +192,7 @@ dialog.summary h2 { margin-top: 0; }
 }
 .topbar.collapsed.menu-open nav a { padding: 12px 14px; font-size: 1.05rem; }
 .topbar .title { white-space: nowrap; }  /* never wrap: overflow is what triggers the menu */
+
+/* ---- Data screen ---- */
+.kv td.warn-cell { color: var(--danger); }
+code { font-size: 0.9em; }

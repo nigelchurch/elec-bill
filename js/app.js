@@ -11,10 +11,16 @@ import { parseBackup } from './csv.js';
 import { renderDaily } from './daily.js';
 import { renderHistory } from './history.js';
 import { renderBill } from './bill.js';
+import { downloadBackup } from './files.js';
+import { daysBetween } from './calc.js';
+import { todayISO } from './format.js';
 
 const app = document.getElementById('app');
 
-// ---------- Screens (placeholders are filled in during later build steps) ----------
+// ---------- Screens ----------
+
+// A backup older than this many days is shown in red on the Data screen.
+const BACKUP_WARN_DAYS = 35;
 
 const screens = {
   daily: (params) => renderDaily(app, params.get('date')),
@@ -32,16 +38,30 @@ const screens = {
       getMeta('lastImport'),
       navigator.storage?.persisted ? navigator.storage.persisted() : false,
     ]);
+    const age = lastBackup ? daysBetween(lastBackup, todayISO()) : null;
+    const backupOld = age === null || age > BACKUP_WARN_DAYS;
+    const backupText = lastBackup
+      ? `${lastBackup} (${age === 0 ? 'today' : `${age} day${age === 1 ? '' : 's'} ago`})`
+      : 'never';
     app.innerHTML = `
       <h1>Data</h1>
       <div class="card">
         <table class="kv">
           <tr><td>Readings</td><td>${readings}</td></tr>
           <tr><td>Bills</td><td>${bills}</td></tr>
-          <tr><td>Last backup</td><td>${lastBackup || 'never'}</td></tr>
+          <tr><td>Last backup</td><td class="${backupOld ? 'warn-cell' : ''}">${backupText}</td></tr>
           <tr><td>Last import</td><td>${lastImport || 'never'}</td></tr>
           <tr><td>Persistent storage</td><td>${persisted ? 'yes' : 'no'}</td></tr>
         </table>
+      </div>
+
+      <h2>Back up</h2>
+      <div class="card">
+        <p class="muted">Saves every reading and bill to one file in Downloads
+          (<code>ElecBackup-${todayISO()}.csv</code>). Any one backup restores everything.
+          Keep a copy off the phone too, e.g. in OneDrive or Google Drive.</p>
+        <button type="button" class="full" id="exportBtn">Export backup</button>
+        <p id="exportMsg"></p>
       </div>
 
       <h2>Restore from backup</h2>
@@ -52,11 +72,19 @@ const screens = {
         <input id="importFile" type="file" accept=".csv,text/csv" hidden>
         <p id="importMsg"></p>
       </div>
-      <p class="muted">Export is added in build step 7.</p>
     `;
     document.getElementById('importFile').addEventListener('change', onImportFile);
+    document.getElementById('exportBtn').addEventListener('click', onExport);
   },
 };
+
+// ---------- Export ----------
+
+async function onExport() {
+  const filename = await downloadBackup();
+  await render(); // redraw so "Last backup" shows today
+  document.getElementById('exportMsg').textContent = `Saved ${filename} to Downloads.`;
+}
 
 // ---------- Import ----------
 
