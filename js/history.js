@@ -2,6 +2,7 @@
 // Tapping a row opens the Daily screen on that date, which already handles
 // editing, sanity checks and re-interpolating neighbouring estimated days.
 
+import { navigate } from './nav.js';
 import { getAll } from './db.js';
 import { indexByDate, usageOn, METERS, last4, roundHalfUp } from './calc.js';
 import { MONTHS, DAYS, NAMES, esc } from './format.js';
@@ -55,7 +56,7 @@ export async function renderHistory(app) {
     const tr = e.target.closest('tr[data-date]');
     if (!tr) return;
     lastOpened = tr.dataset.date;
-    location.hash = `#daily?date=${tr.dataset.date}`;
+    navigate(`#daily?date=${tr.dataset.date}`, { edit: true }); // Back returns here
   });
   document.getElementById('showOlder')?.addEventListener('click', () => {
     shown += 365;

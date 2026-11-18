@@ -1,7 +1,8 @@
 // App entry point: registers the service worker, asks for persistent storage,
 // and switches between screens.
 //
-// Navigation uses the URL "hash" (#daily, #history, #bill, #data). Changing the
+// Navigation uses the URL "hash" (#daily, #history, #bill, #data); js/nav.js keeps
+// the Back button app-like (Back goes to Daily, then closes the app). Changing the
 // hash doesn't reload the page, the browser Back button works, and it needs no
 // server support, which suits GitHub Pages. A screen can take parameters after
 // a '?', e.g. #daily?date=2026-11-10 (used by History to open a day for editing).
@@ -14,6 +15,7 @@ import { renderBill } from './bill.js';
 import { downloadBackup } from './files.js';
 import { daysBetween } from './calc.js';
 import { todayISO } from './format.js';
+import { navigate, initNav } from './nav.js';
 
 const app = document.getElementById('app');
 
@@ -226,7 +228,7 @@ document.addEventListener('touchend', () => {
     // Carry on from where the finger left the page (see the page-in/out
     // animations in styles.css, which start from --drag).
     document.documentElement.style.setProperty('--drag', `${dx}px`);
-    location.hash = `#${target}`;
+    navigate(`#${target}`);
   } else {
     springBack();
   }
@@ -275,6 +277,7 @@ menuBtn.addEventListener('click', (e) => {
 document.addEventListener('click', closeMenu); // tapping a link or anywhere else closes it
 
 async function start() {
+  initNav(); // Back button: see js/nav.js
   await openDB();
 
   // Ask the browser not to evict our data under storage pressure. Chrome decides
