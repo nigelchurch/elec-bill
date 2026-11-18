@@ -29,10 +29,12 @@ from playwright.sync_api import sync_playwright
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data" / "initial-import.csv"
 
-# Approximate CSS-pixel sizes of the Galaxy Z Fold7 screens in Chrome.
+# Approximate CSS-pixel sizes of the Galaxy Z Fold screens (whole screen; the
+# visible area in Chrome is a little shorter).
 SCREENS = {
-    "outer": {"width": 412, "height": 915},   # narrow cover screen
-    "inner": {"width": 750, "height": 830},   # unfolded main screen
+    "outer": {"width": 411, "height": 960},   # Fold7 narrow cover screen
+    "inner": {"width": 750, "height": 832},   # Fold7 unfolded main screen
+    "fold5": {"width": 344, "height": 882},   # Fold5 cover screen: narrowest case
 }
 
 
