@@ -1,13 +1,14 @@
 // Bill screen: enter the utility bill figures for a month, then Generate:
 //   1. check there is a reading for every day from the 1st to the 1st of next month
 //   2. calculate the split and save the bill record
-//   3. save the PDF and a full CSV backup to Downloads
-//   4. open the share sheet with the PDF (or show a "Share PDF" button)
+//   3. build the PDF and open it in a new tab
+// The result then offers Share PDF (share sheet), Open PDF and Save PDF (to Downloads).
+// Each of those is its own tap, so only one dialog ever appears at a time.
 
-import { getAll, get, put } from './db.js';
+import { getAll, get, put, getMeta } from './db.js';
 import { indexByDate, monthUsage, billSplit, billRows, addDays } from './calc.js';
 import { buildBillPdf, pdfFilename } from './pdf.js';
-import { downloadBlob, downloadBackup, shareFile } from './files.js';
+import { downloadBlob, shareFile } from './files.js';
 import { NAMES, todayISO, fmtNum, fmtMonth, fmtDateRanges, esc } from './format.js';
 
 const FIELDS = [
@@ -144,25 +145,27 @@ async function generate() {
     return;
   }
 
+  // Open the new tab now, while this still counts as the user's tap; browsers
+  // block tabs opened later by code. The PDF is put into it once it's built.
+  const tab = window.open('', '_blank');
   try {
     await put('bills', { month, ...values });
-    const filename = pdfFilename(month);
     const blob = await pdfBlob(bill);
-    downloadBlob(blob, filename);
-    const backupName = await downloadBackup();
-    // Show the summary first, then open the share sheet on top of it.
-    showResult(bill, blob, filename, `Saved ${filename} and ${backupName} to Downloads.`);
+    const url = URL.createObjectURL(blob);
+    if (tab) tab.location.href = url;
+    await showResult(bill, blob, url, !!tab);
     await drawList();
-    showShareOutcome(await shareFile(blob, filename, `Electricity bill ${fmtMonth(month)}`));
   } catch (err) {
+    tab?.close();
     msg.textContent = `Something went wrong: ${err.message}`;
   }
 }
 
-// Summary of the split. The Share button stays hidden unless the automatic
-// share sheet doesn't work out (see showShareOutcome).
-function showResult(bill, blob, filename, savedText) {
+// Summary of the split, with buttons to open, share or save the PDF.
+async function showResult(bill, blob, url, opened) {
   const s = bill.split;
+  const filename = pdfFilename(bill.month);
+  const lastBackup = await getMeta('lastBackup');
   const result = document.getElementById('billResult');
   result.innerHTML = `
     <div class="card">
@@ -173,25 +176,21 @@ function showResult(bill, blob, filename, savedText) {
         <tr><td>${esc(NAMES.nova)} (B) · ${fmtNum(bill.novaUnits)} kWh</td><td>${fmtNum(s.B)} Baht</td></tr>
         <tr><td>Boy&amp;Yui</td><td>${fmtNum(s.boyYui)} Baht</td></tr>
       </table>
-      <p class="hint">${esc(savedText)} <span id="shareNote">Opening the share sheet…</span></p>
-      <button type="button" class="full" id="shareBtn" hidden>Share PDF</button>
+      <p class="hint">${opened ? 'The PDF has opened in a new tab.' : 'Bill saved. Tap Open PDF to view it.'}</p>
+      <button type="button" class="full" id="shareBtn">Share PDF</button>
+      <div class="row btn-row">
+        <button type="button" class="secondary" id="openBtn">Open PDF</button>
+        <button type="button" class="secondary" id="saveBtn">Save PDF</button>
+      </div>
+      <p class="hint">Last backup: ${lastBackup || 'never'}. <a href="#data">Back up on the Data screen</a></p>
     </div>`;
-  document.getElementById('shareBtn')?.addEventListener('click', async () => {
+  document.getElementById('shareBtn').addEventListener('click', async () => {
     const r = await shareFile(blob, filename, `Electricity bill ${fmtMonth(bill.month)}`);
-    if (r === 'unavailable') alert('Sharing is not available in this browser. The PDF is in Downloads.');
+    if (r === 'unavailable') alert('Sharing is not available in this browser. Use Save PDF instead.');
   });
+  document.getElementById('openBtn').addEventListener('click', () => window.open(url, '_blank'));
+  document.getElementById('saveBtn').addEventListener('click', () => downloadBlob(blob, filename));
   result.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-function showShareOutcome(shared) {
-  const note = document.getElementById('shareNote');
-  if (!note) return;
-  note.textContent = {
-    shared: 'Shared.',
-    cancelled: 'Sharing cancelled.',
-    unavailable: 'The share sheet could not open automatically.',
-  }[shared];
-  document.getElementById('shareBtn').hidden = shared === 'shared';
 }
 
 // Saved bills, newest first. Bills made in the app can be re-shared or
