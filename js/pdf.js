@@ -14,6 +14,7 @@ const GREEN = '#e2efda';     // "from bill" input values
 const PINK = '#efaaaa';      // fill of the A / B / Boy&Yui boxes
 const RED = '#ff5050';       // border of those boxes
 const GREY = '#bcbcbc';      // small A / B label boxes
+const EST = '#8a8a8a';       // estimated values: grey italics
 
 // Body text size. The reference uses 9.6 pt Calibri; Helvetica (built into every
 // PDF reader, so nothing to embed) is wider, and 8.8 pt matches Calibri's widths.
@@ -104,17 +105,18 @@ export function buildBillPdf(jsPDF, bill) {
   text(doc, 'Gaae&Thip', COL.thipUse, 257.6, head);
   text(doc, 'Nig&Jop', COL.novaUse, 257.6, head);
 
-  // ---- One row per day (estimated values in italics) ----
+  // ---- One row per day (estimated values in grey italics) ----
   const top = 282.6;
   bill.rows.forEach((r, i) => {
     const y = top + i * PITCH;
     const d = new Date(`${r.date}T00:00:00Z`);
     text(doc, `${String(d.getUTCDate()).padStart(2, '0')} ${MONTHS[d.getUTCMonth()]}`, 85.2, y);
     text(doc, DAYS[d.getUTCDay()], COL.day, y, { right: true });
-    if (r.thip !== null) text(doc, last4(r.thip), COL.thip, y, { right: true, italic: r.thip_est });
-    if (r.nova !== null) text(doc, last4(r.nova), COL.nova, y, { right: true, italic: r.nova_est });
-    if (r.thipUse !== null) text(doc, fmtNum(r.thipUse), COL.thipUse, y, { right: true, italic: r.thipUseEst });
-    if (r.novaUse !== null) text(doc, fmtNum(r.novaUse), COL.novaUse, y, { right: true, italic: r.novaUseEst });
+    const est = (flag) => ({ right: true, italic: flag, color: flag ? EST : '#000000' });
+    if (r.thip !== null) text(doc, last4(r.thip), COL.thip, y, est(r.thip_est));
+    if (r.nova !== null) text(doc, last4(r.nova), COL.nova, y, est(r.nova_est));
+    if (r.thipUse !== null) text(doc, fmtNum(r.thipUse), COL.thipUse, y, est(r.thipUseEst));
+    if (r.novaUse !== null) text(doc, fmtNum(r.novaUse), COL.novaUse, y, est(r.novaUseEst));
   });
   const lastRowBottom = top + (bill.rows.length - 1) * PITCH + 11.9;
   doc.setDrawColor(LINE_BLUE);
@@ -123,8 +125,8 @@ export function buildBillPdf(jsPDF, bill) {
 
   // Small key under the table, since italics are new compared with the Excel version.
   if (bill.rows.some((r) => r.thip_est || r.nova_est)) {
-    text(doc, 'Italic = estimated (no reading taken that day)', 85.2, lastRowBottom + 2.5,
-      { italic: true, size: 7.5, color: '#666666' });
+    text(doc, 'Grey italic = estimated (no reading taken that day)', 85.2, lastRowBottom + 2.5,
+      { italic: true, size: 7.5, color: EST });
   }
 
   // ---- Footer: totals and the split ----

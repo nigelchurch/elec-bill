@@ -32,12 +32,28 @@ with app_session(SCREENS["outer"]) as page:
     check("Month defaults to previous month", page.input_value("#month") == "2026-10", page.input_value("#month"))
     check("Readings status", "137 kWh" in page.text_content("#readStatus"), page.text_content("#readStatus"))
 
-    for key, value in [("P", "3,840.30"), ("OP", "1766.54"), ("H", "3529.1"), ("total_baht", "39,389.23")]:
-        page.fill(f"#f-{key}", value)
+    # Typing: after the 2nd decimal the cursor jumps to the next box; after Total Bill the keypad closes.
+    page.click("#f-P")
+    focus = []
+    for value in ["3840.30", "1766.54", "3529.10", "39389.23"]:
+        page.keyboard.type(value, delay=20)
+        focus.append(page.evaluate("document.activeElement.id"))
+    check("Auto-advance after 2 decimals", focus == ["f-OP", "f-H", "f-total_baht", ""], focus)
 
-    # Generate shows the summary and a preview of the PDF, with no tab or download.
+    # Generate first shows the check pop-up; Cancel saves nothing.
+    page.click("#billForm button[type=submit]")
+    page.wait_for_selector("dialog.summary[open]")
+    text = page.text_content("dialog.summary")
+    check("Pop-up shows rate and split", all(t in text for t in ["4.31", "590", "2,368", "36,431"]), " ".join(text.split()))
+    check("Normal rate not red", page.locator("dialog.summary .rate-high").count() == 0)
+    page.click("dialog.summary button[value=cancel]")
+    page.wait_for_timeout(200)
+    check("Cancel: nothing generated", page.locator("#billResult table").count() == 0)
+
+    # Generate again and Continue: summary and a preview of the PDF, no tab or download.
     pages_before = len(page.context.pages)
     page.click("#billForm button[type=submit]")
+    page.click("dialog.summary button[value=ok]")
     page.wait_for_selector("#billResult table")
     page.wait_for_selector("#preview canvas", timeout=15000)
     check("Generate opens no new tab", len(page.context.pages) == pages_before)
@@ -47,6 +63,11 @@ with app_session(SCREENS["outer"]) as page:
     size = page.evaluate("() => { const c = document.querySelector('#preview canvas'); return [c.width, c.height, c.clientWidth]; }")
     check("PDF preview drawn", size[0] > 500 and size[1] > size[0], size)
     page.locator("#preview").screenshot(path=str(OUT / "bill-preview-outer.png"))
+    page.click("#preview")
+    zoomed = page.evaluate("() => document.querySelector('#preview canvas').clientWidth")
+    check("Tap preview zooms to double width", zoomed >= 2 * size[2] - 2, (size[2], zoomed))
+    page.locator("#preview").screenshot(path=str(OUT / "bill-preview-zoomed.png"))
+    page.click("#preview")
 
     # Save PDF downloads it with the proper name.
     with page.expect_download() as dl:
@@ -74,6 +95,19 @@ with app_session(SCREENS["outer"]) as page:
     page.wait_for_timeout(300)
     check("November refused", "18–30 Nov, 1 Dec" in page.text_content("#billMsg"), page.text_content("#billMsg"))
     check("No tab opened when refused", len(page.context.pages) == pages_before)
+
+    # A high rate shows in bold red (October with a bigger total: 50,000 / 9,135.94 = 5.47).
+    page.fill("#month", "2026-10")
+    page.dispatch_event("#month", "change")
+    page.wait_for_timeout(300)
+    page.fill("#f-total_baht", "50000")
+    page.click("#billForm button[type=submit]")
+    page.wait_for_selector("dialog.summary[open]")
+    red = page.locator("dialog.summary td.rate-high")
+    check("High rate in bold red", red.count() == 1 and "5.47" in red.text_content()
+          and page.evaluate("() => getComputedStyle(document.querySelector('dialog.summary td.rate-high')).fontWeight") == "700")
+    page.locator("dialog.summary").screenshot(path=str(OUT / "bill-dialog-high.png"))
+    page.click("dialog.summary button[value=cancel]")
 
     # Back to October: the saved figures pre-fill.
     page.fill("#month", "2026-10")

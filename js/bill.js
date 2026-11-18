@@ -18,6 +18,9 @@ const FIELDS = [
   { key: 'total_baht', label: 'Total Bill', unit: 'Baht' },
 ];
 
+// The check pop-up shows the rate in bold red above this (Baht/kWh).
+const RATE_WARNING = 4.8;
+
 let app;
 let month;            // usage month 'YYYY-MM'
 let byDate;           // readings by date (loaded when the screen opens)
@@ -75,6 +78,19 @@ export async function renderBill(container) {
     loadMonth();
   });
   document.getElementById('billForm').addEventListener('submit', (e) => { e.preventDefault(); generate(); });
+
+  // After the 2nd decimal place, jump to the next box (and close the keypad
+  // after Total Bill). Tapping a filled box selects it, so typing replaces it.
+  FIELDS.forEach((f, i) => {
+    const input = document.getElementById(`f-${f.key}`);
+    input.addEventListener('focus', () => input.select());
+    input.addEventListener('input', () => {
+      if (!/\.\d{2}$/.test(input.value)) return;
+      const next = FIELDS[i + 1];
+      if (next) document.getElementById(`f-${next.key}`).focus();
+      else input.blur();
+    });
+  });
 
   await loadMonth();
   await drawList();
@@ -145,6 +161,8 @@ async function generate() {
     return;
   }
 
+  if (!(await confirmSummary(bill))) return;
+
   try {
     await put('bills', { month, ...values });
     const blob = await pdfBlob(bill);
@@ -153,6 +171,42 @@ async function generate() {
   } catch (err) {
     msg.textContent = `Something went wrong: ${err.message}`;
   }
+}
+
+// A check before anything is saved: the key figures, with the rate in bold
+// red if it is unusually high (a typo in P/OP/H or the total is the likely cause).
+// Resolves true for Continue, false for Cancel.
+function confirmSummary(bill) {
+  const s = bill.split;
+  const high = s.rate > RATE_WARNING;
+  const dlg = document.createElement('dialog');
+  dlg.className = 'summary';
+  dlg.innerHTML = `
+    <h2>${fmtMonth(bill.month)}: check before generating</h2>
+    <table class="kv">
+      <tr><td>Tariff rate</td><td class="${high ? 'rate-high' : ''}">${fmtNum(s.rate, 2)} Baht/kWh</td></tr>
+      <tr><td>${esc(NAMES.thip)} · ${fmtNum(bill.thipUnits)} kWh</td><td>${fmtNum(s.A)} Baht</td></tr>
+      <tr><td>${esc(NAMES.nova)} · ${fmtNum(bill.novaUnits)} kWh</td><td>${fmtNum(s.B)} Baht</td></tr>
+      <tr><td>Boy&amp;Yui</td><td>${fmtNum(s.boyYui)} Baht</td></tr>
+      <tr><td>Total bill</td><td>${fmtNum(bill.totalBill, 2)} Baht</td></tr>
+    </table>
+    ${high ? `<p class="rate-high">The rate is above ${fmtNum(RATE_WARNING, 1)} Baht/kWh. Please check P, OP, H and the total.</p>` : ''}
+    <div class="row btn-row">
+      <button type="button" class="secondary" value="cancel">Cancel</button>
+      <button type="button" value="ok">Continue</button>
+    </div>`;
+  document.body.appendChild(dlg);
+  return new Promise((resolve) => {
+    dlg.addEventListener('click', (e) => {
+      const v = e.target.closest('button')?.value;
+      if (v) dlg.close(v);
+    });
+    dlg.addEventListener('close', () => { // also fires for the phone's Back gesture
+      resolve(dlg.returnValue === 'ok');
+      dlg.remove();
+    });
+    dlg.showModal(); // a "modal" dialog: the page behind can't be used until it closes
+  });
 }
 
 // Summary of the split, Share / Save buttons, and a preview of the PDF itself.
@@ -175,6 +229,7 @@ async function showResult(bill, blob) {
         <button type="button" class="secondary" id="saveBtn">Save PDF</button>
       </div>
       <p class="hint">Last backup: ${lastBackup || 'never'}. <a href="#data">Back up on the Data screen</a></p>
+      <p class="hint">Preview: tap to zoom in or out.</p>
       <div class="preview" id="preview"><p class="hint">Preparing preview…</p></div>
     </div>`;
   document.getElementById('shareBtn').addEventListener('click', async () => {
@@ -203,6 +258,9 @@ async function renderPreview(blob, container) {
     canvas.height = Math.floor(viewport.height);
     await page.render({ canvas, canvasContext: canvas.getContext('2d'), viewport }).promise;
     container.replaceChildren(canvas);
+    // Tap to show it at double width (scroll around with a finger); tap again to shrink.
+    container.title = 'Tap to zoom';
+    container.addEventListener('click', () => container.classList.toggle('zoomed'));
   } catch (err) {
     container.innerHTML = `<p class="hint">Preview not available (${esc(err.message)}). Use Save PDF to view it.</p>`;
   }

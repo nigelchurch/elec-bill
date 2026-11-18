@@ -165,3 +165,14 @@ button:disabled { opacity: 0.5; }
 .btn-row > button { width: 100%; }
 .preview { margin-top: 12px; border: 1px solid var(--border); background: #fff; }
 .preview canvas { display: block; width: 100%; height: auto; }
+
+/* Bill: preview zoom (tap toggles double width; scroll sideways inside the frame) */
+.preview { overflow: auto; cursor: zoom-in; }
+.preview.zoomed { cursor: zoom-out; }
+.preview.zoomed canvas { width: 200%; }
+
+/* Bill: the check pop-up shown before generating */
+dialog.summary { border: none; border-radius: var(--radius); padding: 20px; width: min(420px, calc(100% - 32px)); }
+dialog.summary::backdrop { background: rgba(0, 0, 0, 0.45); }
+dialog.summary h2 { margin-top: 0; }
+.rate-high, .kv td.rate-high { color: var(--danger); font-weight: 700; } /* beats .kv td:last-child */
