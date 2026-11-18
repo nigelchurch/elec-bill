@@ -7,7 +7,7 @@
 // sw.js has changed, installs the new version, downloads fresh copies of the
 // files, and deletes the old cache.
 
-const CACHE_VERSION = 'v30';
+const CACHE_VERSION = 'v31';
 const CACHE_NAME = `elecbill-${CACHE_VERSION}`;
 
 // Every file the app needs. Paths are relative to this file (works on GitHub Pages
@@ -36,10 +36,14 @@ const APP_FILES = [
 ];
 
 // 1. Install: download and cache all app files.
+// cache: 'reload' fetches every file fresh from the server. Without it the
+// browser may hand back its own short-term copy (GitHub Pages lets browsers
+// reuse files for 10 minutes), and an old file would be stored under the new
+// version until the next update.
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_FILES))
+      .then((cache) => cache.addAll(APP_FILES.map((f) => new Request(f, { cache: 'reload' }))))
       .then(() => self.skipWaiting()) // activate immediately, don't wait for old tabs to close
   );
 });
