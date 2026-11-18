@@ -57,8 +57,25 @@ with app_session(SCREENS["outer"], url=args.url) as page:
         back.append(screen(page))
     check("Swipe right walks back", back == ["history", "bill", "daily", "daily"], back)
 
-    swipe(cdp, page, right, mid_y, left, mid_y, ms=1200)
-    check("Slow drag doesn't change screen", screen(page) == "daily", screen(page))
+    # The page follows the finger while it is still down.
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": right, "y": mid_y}]})
+    for x in (right - 20, right - 60, right - 100):
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x, "y": mid_y}]})
+    moved = page.evaluate("document.getElementById('app').getBoundingClientRect().x")
+    check("Page follows the finger mid-drag", -110 < moved < -90, f"page x={moved}")
+    page.screenshot(path=str(Path(__file__).parent.parent / "data" / "screenshots" / "mid-drag.png"))
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": right, "y": mid_y}]})
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})  # let go where it started
+    page.wait_for_timeout(500)
+    check("Dragged back and let go: stays", screen(page) == "daily", screen(page))
+
+    swipe(cdp, page, right, mid_y, right - w * 0.25, mid_y, ms=1200)
+    back_x = page.evaluate("document.getElementById('app').getBoundingClientRect().x")
+    check("Short slow drag springs back", screen(page) == "daily" and abs(back_x) < 1, f"{screen(page)} x={back_x}")
+
+    swipe(cdp, page, w * 0.9, mid_y, w * 0.1, mid_y, ms=1200)
+    check("Long slow drag changes screen", screen(page) == "bill", screen(page))
+    swipe(cdp, page, left, mid_y, right, mid_y)
 
     swipe(cdp, page, w / 2, 700, w / 2 - 40, 250)
     check("Mostly vertical drag doesn't change screen", screen(page) == "daily", screen(page))

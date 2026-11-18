@@ -141,6 +141,7 @@ function render() {
   const name = currentScreen();
   const params = new URLSearchParams(query);
   const draw = () => {
+    app.style.transition = app.style.transform = ''; // undo any finger drag (see below)
     document.querySelectorAll('[data-nav]').forEach((a) => {
       a.classList.toggle('active', a.dataset.nav === name);
     });
@@ -159,40 +160,89 @@ function render() {
   root.classList.remove('go-next', 'go-prev');
   root.classList.add(forward ? 'go-next' : 'go-prev');
   const transition = document.startViewTransition(draw);
-  transition.finished.finally(() => root.classList.remove('go-next', 'go-prev'));
+  transition.finished.finally(() => {
+    root.classList.remove('go-next', 'go-prev');
+    root.style.removeProperty('--drag');
+  });
   return transition.updateCallbackDone;
 }
 
 window.addEventListener('hashchange', render);
 
 // ---------- Swipe between screens ----------
-// Swipe left for the next screen, right for the previous, in top-bar order.
-// Only a quick, clearly sideways swipe counts, so scrolling up and down is
-// unaffected. Ignored inside the zoomed PDF preview (where sideways scrolls it)
-// and in pop-ups.
+// Drag sideways and the page follows your finger. Let go past about a third of
+// the screen (or flick quickly) and it carries on to the next screen in
+// top-bar order; otherwise it springs back. At the first and last screens it
+// only stretches a little. Ignored inside the zoomed PDF preview (where
+// sideways scrolls it) and in pop-ups.
 
-const SWIPE = { MIN_DX: 70, MAX_MS: 700 }; // at least 70 px sideways, within 0.7 s
-let touchStart = null;
+const SWIPE = {
+  DECIDE_PX: 10,      // movement before deciding: sideways drag or normal scroll?
+  COMMIT_FRACTION: 0.33, // drag past this share of the screen width to change page
+  FLICK_PX: 50,       // ...or a quick flick of at least this many px
+  FLICK_MS: 300,      //    within this many milliseconds
+  EDGE_RESIST: 0.25,  // at the first/last screen the page moves only this much
+};
+let drag = null; // { x, y, time, mode: null | 'x' | 'scroll', dx }
+
+// The screen a drag of dx would go to (or undefined at the ends).
+const neighbour = (dx) => ORDER[ORDER.indexOf(currentScreen()) + (dx < 0 ? 1 : -1)];
 
 document.addEventListener('touchstart', (e) => {
   const t = e.touches[0];
-  touchStart = e.touches.length === 1 && !e.target.closest('.preview.zoomed, dialog')
-    ? { x: t.clientX, y: t.clientY, time: Date.now() }
+  drag = e.touches.length === 1 && !e.target.closest('.preview.zoomed, dialog')
+    ? { x: t.clientX, y: t.clientY, time: Date.now(), mode: null, dx: 0 }
     : null;
-}, { passive: true }); // passive: we never block scrolling
-
-document.addEventListener('touchend', (e) => {
-  if (!touchStart) return;
-  const t = e.changedTouches[0];
-  const dx = t.clientX - touchStart.x;
-  const dy = t.clientY - touchStart.y;
-  const quick = Date.now() - touchStart.time < SWIPE.MAX_MS;
-  touchStart = null;
-  if (!quick || Math.abs(dx) < SWIPE.MIN_DX || Math.abs(dx) < 2 * Math.abs(dy)) return;
-  const next = ORDER.indexOf(currentScreen()) + (dx < 0 ? 1 : -1);
-  if (next < 0 || next >= ORDER.length) return; // already at the first / last screen
-  location.hash = `#${ORDER[next]}`;
 }, { passive: true });
+
+// Not passive: once a drag is clearly sideways we stop the page also scrolling
+// up and down under the finger. Up/down scrolls are never blocked.
+document.addEventListener('touchmove', (e) => {
+  if (!drag) return;
+  if (e.touches.length > 1) { cancelDrag(); return; }
+  const t = e.touches[0];
+  const dx = t.clientX - drag.x;
+  const dy = t.clientY - drag.y;
+  if (!drag.mode) {
+    if (Math.hypot(dx, dy) < SWIPE.DECIDE_PX) return;
+    drag.mode = Math.abs(dx) > 1.5 * Math.abs(dy) ? 'x' : 'scroll';
+    if (drag.mode === 'x') app.style.transition = 'none';
+  }
+  if (drag.mode !== 'x') return;
+  if (e.cancelable) e.preventDefault();
+  drag.dx = dx;
+  const shown = neighbour(dx) ? dx : dx * SWIPE.EDGE_RESIST;
+  app.style.transform = `translateX(${shown}px)`;
+}, { passive: false });
+
+document.addEventListener('touchend', () => {
+  if (!drag || drag.mode !== 'x') { drag = null; return; }
+  const { dx, time } = drag;
+  drag = null;
+  const target = neighbour(dx);
+  const far = Math.abs(dx) > window.innerWidth * SWIPE.COMMIT_FRACTION;
+  const flick = Math.abs(dx) > SWIPE.FLICK_PX && Date.now() - time < SWIPE.FLICK_MS;
+  if (target && (far || flick)) {
+    // Carry on from where the finger left the page (see the page-in/out
+    // animations in styles.css, which start from --drag).
+    document.documentElement.style.setProperty('--drag', `${dx}px`);
+    location.hash = `#${target}`;
+  } else {
+    springBack();
+  }
+});
+
+document.addEventListener('touchcancel', cancelDrag);
+
+function cancelDrag() {
+  if (drag?.mode === 'x') springBack();
+  drag = null;
+}
+
+function springBack() {
+  app.style.transition = 'transform 0.2s ease-out';
+  app.style.transform = '';
+}
 
 // ---------- Start-up ----------
 

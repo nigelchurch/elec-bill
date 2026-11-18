@@ -212,10 +212,15 @@ html, body { overscroll-behavior-x: none; }
 ::view-transition-group(topbar) { animation: none; }
 ::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode: normal; }
 
-@keyframes page-out-left  { to   { transform: translateX(-100%); } }
-@keyframes page-in-right  { from { transform: translateX(100%); } }
-@keyframes page-out-right { to   { transform: translateX(100%); } }
-@keyframes page-in-left   { from { transform: translateX(-100%); } }
+/* --drag: how far the finger had already dragged the page (0 for a tap on a
+   link), so a swipe carries on smoothly from where the finger let go. */
+@keyframes page-out-left  { to   { transform: translateX(calc(-100% - var(--drag, 0px))); } }
+@keyframes page-in-right  { from { transform: translateX(calc(100% + var(--drag, 0px))); } }
+@keyframes page-out-right { to   { transform: translateX(calc(100% - var(--drag, 0px))); } }
+@keyframes page-in-left   { from { transform: translateX(calc(-100% + var(--drag, 0px))); } }
+
+/* While a page is dragged sideways it must not make the page scroll sideways. */
+html { overflow-x: clip; }
 
 html.go-next::view-transition-old(root) { animation: page-out-left  0.3s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
 html.go-next::view-transition-new(root) { animation: page-in-right  0.3s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
