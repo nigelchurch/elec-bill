@@ -50,7 +50,12 @@ def static_server():
             pass
 
     handler = functools.partial(QuietHandler, directory=str(ROOT))
-    with socketserver.TCPServer(("127.0.0.1", 0), handler) as httpd:
+    # Threading: Edge sometimes opens a spare connection and sends nothing on it;
+    # a one-at-a-time server would wait on that forever and the page never loads.
+    class Server(socketserver.ThreadingTCPServer):
+        daemon_threads = True
+
+    with Server(("127.0.0.1", 0), handler) as httpd:
         thread = threading.Thread(target=httpd.serve_forever, daemon=True)
         thread.start()
         try:
@@ -168,6 +173,7 @@ def main():
             for screen, wait in [("daily", "#dailyForm"), ("history", "table.hist"), ("data", ".kv")]:
                 page.goto(page.base + "#" + screen)
                 page.wait_for_selector(wait)
+                page.wait_for_function("document.getAnimations().length === 0")  # page slide finished
                 path = out / f"{screen}-{name}.png"
                 page.screenshot(path=str(path))
                 print("saved", path)

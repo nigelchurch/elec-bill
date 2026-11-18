@@ -46,16 +46,16 @@ with app_session(SCREENS["outer"], url=args.url) as page:
     left, right = w * 0.2, w * 0.8   # away from the edges (Android's back gesture)
 
     seen = [screen(page)]
-    for _ in range(4):               # swipe left 4 times: daily -> bill -> history -> data -> (stays)
+    for _ in range(4):               # swipe left 4 times: daily -> history -> bill -> data -> (stays)
         swipe(cdp, page, right, mid_y, left, mid_y)
         seen.append(screen(page))
-    check("Swipe left walks through the screens", seen == ["daily", "bill", "history", "data", "data"], seen)
+    check("Swipe left walks through the screens", seen == ["daily", "history", "bill", "data", "data"], seen)
 
     back = []
     for _ in range(4):
         swipe(cdp, page, left, mid_y, right, mid_y)
         back.append(screen(page))
-    check("Swipe right walks back", back == ["history", "bill", "daily", "daily"], back)
+    check("Swipe right walks back", back == ["bill", "history", "daily", "daily"], back)
 
     # The page follows the finger while it is still down.
     cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": right, "y": mid_y}]})
@@ -74,7 +74,7 @@ with app_session(SCREENS["outer"], url=args.url) as page:
     check("Short slow drag springs back", screen(page) == "daily" and abs(back_x) < 1, f"{screen(page)} x={back_x}")
 
     swipe(cdp, page, w * 0.9, mid_y, w * 0.1, mid_y, ms=1200)
-    check("Long slow drag changes screen", screen(page) == "bill", screen(page))
+    check("Long slow drag changes screen", screen(page) == "history", screen(page))
     swipe(cdp, page, left, mid_y, right, mid_y)
 
     swipe(cdp, page, w / 2, 700, w / 2 - 40, 250)
@@ -112,7 +112,18 @@ with app_session(SCREENS["outer"], url=args.url) as page:
         page.click(f"nav a[data-nav={link}]")
         page.wait_for_timeout(500)
     vt = page.evaluate("vt")
-    check("Tapping links slides pages (later = from right)", vt == ["go-next", "go-prev", "go-next"], vt)
+    check("Tapping links slides pages (later = from right)", vt == ["go-next", "go-prev", "go-prev"], vt)
+    # A page change that cuts short a slide still in progress must still slide
+    # (not cross-fade). Redrawing the Data screen mid-slide (as Import does)
+    # and then leaving reproduced this.
+    page.goto(page.base + "#data")
+    page.wait_for_selector(".kv")
+    page.evaluate("dispatchEvent(new HashChangeEvent('hashchange'))")
+    page.goto(page.base + "#daily")
+    page.wait_for_selector("#dailyForm")
+    names = page.evaluate("document.getAnimations().map(a => a.animationName)")
+    check("Page change during a slide still slides", "page-in-left" in names, names)
+    page.wait_for_timeout(600)
     check("Transition classes cleared afterwards", page.evaluate("document.documentElement.className") == "")
     check("No JavaScript errors", not page.errors, page.errors)
 

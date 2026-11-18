@@ -134,8 +134,9 @@ function currentScreen() {
 }
 
 // Screen order, as in the top bar. Used for swipes and for which way pages slide.
-const ORDER = ['daily', 'bill', 'history', 'data'];
+const ORDER = ['daily', 'history', 'bill', 'data'];
 let shownScreen = null; // the screen currently drawn
+let currentTransition = null; // the page slide in progress, if any
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 function render() {
@@ -162,7 +163,11 @@ function render() {
   root.classList.remove('go-next', 'go-prev');
   root.classList.add(forward ? 'go-next' : 'go-prev');
   const transition = document.startViewTransition(draw);
+  currentTransition = transition;
   transition.finished.finally(() => {
+    // If another page change started meanwhile (it cuts this one short), leave
+    // its settings alone, or it would lose its direction and just cross-fade.
+    if (currentTransition !== transition) return;
     root.classList.remove('go-next', 'go-prev');
     root.style.removeProperty('--drag');
   });
