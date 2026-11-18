@@ -131,25 +131,36 @@ function currentScreen() {
   return screens[name] ? name : 'daily';
 }
 
-let slideDirection = 0; // set by a swipe: +1 = next page, -1 = previous
+// Screen order, as in the top bar. Used for swipes and for which way pages slide.
+const ORDER = ['daily', 'bill', 'history', 'data'];
+let shownScreen = null; // the screen currently drawn
+const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 function render() {
   const query = location.hash.split('?')[1] || '';
   const name = currentScreen();
   const params = new URLSearchParams(query);
-  const screen = screens[name];
-  if (slideDirection) {
-    // Restart the slide-in animation (removing the class and reading a layout
-    // value makes the browser forget the previous run).
-    app.classList.remove('slide-next', 'slide-prev');
-    void app.offsetWidth;
-    app.classList.add(slideDirection > 0 ? 'slide-next' : 'slide-prev');
-    slideDirection = 0;
-  }
-  document.querySelectorAll('[data-nav]').forEach((a) => {
-    a.classList.toggle('active', a.dataset.nav === name);
-  });
-  return screen(params); // returns a Promise for async screens, so callers can await the redraw
+  const draw = () => {
+    document.querySelectorAll('[data-nav]').forEach((a) => {
+      a.classList.toggle('active', a.dataset.nav === name);
+    });
+    return screens[name](params); // a Promise for async screens, so callers can await the redraw
+  };
+
+  const from = shownScreen;
+  shownScreen = name;
+  // Slide only when moving to a different screen (not on a redraw of the same
+  // one, nor at start-up), and only if the browser supports View Transitions.
+  if (!from || from === name || !document.startViewTransition || reduceMotion.matches) return draw();
+
+  // Later screens (in top-bar order) come in from the right, earlier ones from the left.
+  const forward = ORDER.indexOf(name) > ORDER.indexOf(from);
+  const root = document.documentElement;
+  root.classList.remove('go-next', 'go-prev');
+  root.classList.add(forward ? 'go-next' : 'go-prev');
+  const transition = document.startViewTransition(draw);
+  transition.finished.finally(() => root.classList.remove('go-next', 'go-prev'));
+  return transition.updateCallbackDone;
 }
 
 window.addEventListener('hashchange', render);
@@ -160,7 +171,6 @@ window.addEventListener('hashchange', render);
 // unaffected. Ignored inside the zoomed PDF preview (where sideways scrolls it)
 // and in pop-ups.
 
-const ORDER = ['daily', 'bill', 'history', 'data'];
 const SWIPE = { MIN_DX: 70, MAX_MS: 700 }; // at least 70 px sideways, within 0.7 s
 let touchStart = null;
 
@@ -181,7 +191,6 @@ document.addEventListener('touchend', (e) => {
   if (!quick || Math.abs(dx) < SWIPE.MIN_DX || Math.abs(dx) < 2 * Math.abs(dy)) return;
   const next = ORDER.indexOf(currentScreen()) + (dx < 0 ? 1 : -1);
   if (next < 0 || next >= ORDER.length) return; // already at the first / last screen
-  slideDirection = dx < 0 ? 1 : -1;
   location.hash = `#${ORDER[next]}`;
 }, { passive: true });
 

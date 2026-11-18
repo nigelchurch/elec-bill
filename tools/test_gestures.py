@@ -87,6 +87,16 @@ with app_session(SCREENS["outer"], url=args.url) as page:
     page.wait_for_timeout(500)
     scale = page.evaluate("visualViewport.scale")
     check("Pinch-zoom has no effect", abs(scale - 1) < 0.01, f"scale={scale}")
+
+    # Tapping top-bar links slides pages the right way (View Transitions).
+    page.evaluate("""() => { window.vt = []; const o = document.startViewTransition.bind(document);
+      document.startViewTransition = (cb) => { vt.push(document.documentElement.className); return o(cb); }; }""")
+    for link in ["data", "bill", "history"]:
+        page.click(f"nav a[data-nav={link}]")
+        page.wait_for_timeout(500)
+    vt = page.evaluate("vt")
+    check("Tapping links slides pages (later = from right)", vt == ["go-next", "go-prev", "go-next"], vt)
+    check("Transition classes cleared afterwards", page.evaluate("document.documentElement.className") == "")
     check("No JavaScript errors", not page.errors, page.errors)
 
 print("ALL PASS" if not failures else f"FAILED: {failures}")

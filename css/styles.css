@@ -202,9 +202,22 @@ html { touch-action: pan-x pan-y; }
 /* No browser "swipe sideways to go back/forward": our own swipe handles it */
 html, body { overscroll-behavior-x: none; }
 
-/* ---- Slide-in when swiping between screens ---- */
-@keyframes slide-from-right { from { transform: translateX(48px); opacity: 0.2; } to { transform: none; opacity: 1; } }
-@keyframes slide-from-left  { from { transform: translateX(-48px); opacity: 0.2; } to { transform: none; opacity: 1; } }
-main.slide-next { animation: slide-from-right 0.22s ease-out; }
-main.slide-prev { animation: slide-from-left 0.22s ease-out; }
-@media (prefers-reduced-motion: reduce) { main.slide-next, main.slide-prev { animation: none; } }
+/* ---- Page transitions ----
+   Uses the browser's View Transitions API (see render() in js/app.js): the
+   browser takes a picture of the old screen, draws the new one, then animates
+   between the two pictures. The old screen slides out as the new one slides
+   in, like turning a page in a carousel. The top bar has its own name, so it
+   stays still while the content below it moves. */
+.topbar { view-transition-name: topbar; }
+::view-transition-group(topbar) { animation: none; }
+::view-transition-old(root), ::view-transition-new(root) { mix-blend-mode: normal; }
+
+@keyframes page-out-left  { to   { transform: translateX(-100%); } }
+@keyframes page-in-right  { from { transform: translateX(100%); } }
+@keyframes page-out-right { to   { transform: translateX(100%); } }
+@keyframes page-in-left   { from { transform: translateX(-100%); } }
+
+html.go-next::view-transition-old(root) { animation: page-out-left  0.3s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
+html.go-next::view-transition-new(root) { animation: page-in-right  0.3s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
+html.go-prev::view-transition-old(root) { animation: page-out-right 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
+html.go-prev::view-transition-new(root) { animation: page-in-left   0.3s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
