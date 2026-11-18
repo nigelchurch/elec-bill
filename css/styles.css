@@ -150,3 +150,14 @@ button:disabled { opacity: 0.5; }
 .hist .use + .use { border-left: none; }
 .hist td.est { color: var(--est); font-style: italic; }
 .hist tr.highlight { background: #fff3c4; }
+
+/* ---- Bill screen ---- */
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.hint.warn { color: var(--danger); }
+.bill-item { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+             padding: 10px 0; border-bottom: 1px solid var(--border); }
+.bill-item:last-child { border-bottom: none; }
+.bill-actions { display: flex; gap: 6px; }
+.small-btn { min-height: 42px; padding: 8px 12px; font-size: 0.95rem; }
+.older summary { padding: 12px 0 4px; color: var(--muted); cursor: pointer; }
+.older .bill-item { font-size: 0.9rem; color: var(--muted); padding: 6px 0; }

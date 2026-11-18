@@ -120,9 +120,9 @@ def pwa_checks():
                   if line.strip().startswith("'")]
         missing = [f for f in listed if f != "./" and "/" + f not in cache.get("files", [])]
         check("All APP_FILES cached", not missing, missing or f"{len(listed)} files in {cache.get('name')}")
-        js_files = sorted(p.relative_to(ROOT).as_posix() for p in (ROOT / "js").glob("*.js"))
+        js_files = sorted(p.relative_to(ROOT).as_posix() for d in ("js", "lib") for p in (ROOT / d).glob("*.js"))
         unlisted = [f for f in js_files if f not in listed]
-        check("Every js/*.js is in APP_FILES", not unlisted, unlisted)
+        check("Every js/*.js and lib/*.js is in APP_FILES", not unlisted, unlisted)
 
         # IndexedDB: database and its three stores exist.
         stores = page.evaluate("""() => new Promise(res => {

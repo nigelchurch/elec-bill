@@ -10,7 +10,7 @@ import {
   addDays, daysBetween, daysInMonth, nextMonth, rollover, interpolate, applyReading,
   previousReading, nextRealReading,
   indexByDate, usageOn, median, recentRealUsages, sanityCheck, seasonalTypical,
-  yesterdayComparison, monthUsage, billSplit,
+  yesterdayComparison, monthUsage, billSplit, billRows,
 } from '../js/calc.js';
 import { parseBackup } from '../js/csv.js';
 
@@ -192,6 +192,18 @@ test('October 2026 acceptance test (reference PDF)', { skip: !haveData && 'no da
   assert.equal(Math.round(b.B), 2368);
   assert.equal(Math.round(b.boyYui), 36431);
   near(b.A + b.B + b.boyYui, 39389.23, 1e-6); // the three shares add up to the bill
+});
+
+test('billRows: one row per day, usages sum to the month totals', { skip: !haveData && 'no data' }, () => {
+  const rows = billRows(byDate, '2026-10');
+  assert.equal(rows.length, 31);
+  assert.equal(rows[0].date, '2026-10-01');
+  assert.equal(rows[30].date, '2026-10-31');
+  const u = monthUsage(byDate, '2026-10');
+  near(rows.reduce((s, r) => s + r.thipUse, 0), u.thipUnits, 1e-6);
+  near(rows.reduce((s, r) => s + r.novaUse, 0), u.novaUnits, 1e-6);
+  assert.equal(rows[0].novaUseEst, true);   // 1–10 Oct 2026 was an away period
+  assert.equal(rows[20].novaUseEst, false);
 });
 
 test('monthUsage reports missing dates (Nov 2026 is incomplete)', { skip: !haveData && 'no data' }, () => {

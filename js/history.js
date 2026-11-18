@@ -3,7 +3,7 @@
 // editing, sanity checks and re-interpolating neighbouring estimated days.
 
 import { getAll } from './db.js';
-import { indexByDate, usageOn, METERS, last4 } from './calc.js';
+import { indexByDate, usageOn, METERS, last4, roundHalfUp } from './calc.js';
 import { MONTHS, DAYS, NAMES, esc } from './format.js';
 
 const PAGE = 120;        // rows shown at first; "Show older" adds a year at a time
@@ -82,7 +82,7 @@ function rowHTML(r, byDate) {
   const readingCells = METERS.map((m) => cell(r[m], r[m + '_est'], last4));
   const usageCells = METERS.map((m) => {
     const u = usageOn(byDate, m, r.date);
-    return u ? cell(u.usage, u.est, Math.round, 'use') : cell(null, false, Math.round, 'use');
+    return u ? cell(u.usage, u.est, roundHalfUp, 'use') : cell(null, false, roundHalfUp, 'use');
   });
   return `<tr data-date="${r.date}" id="row-${r.date}">
     <td>${d.getUTCDate()}</td><td class="day">${DAYS[d.getUTCDay()]}</td>

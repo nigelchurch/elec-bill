@@ -175,7 +175,11 @@ export function recentRealUsages(byDate, meter, date, n = SANITY.MEDIAN_DAYS) {
 // Last 4 digits of a meter value, as shown on the meter (e.g. 28074 -> '8074',
 // 40021 -> '0021'). Used for every reading shown on screen and in the PDF; the
 // stored full value keeps the extra leading digit(s), which count rollovers.
-export const last4 = (full) => String(Math.round(full) % 10000).padStart(4, '0');
+export const last4 = (full) => String(roundHalfUp(full) % 10000).padStart(4, '0');
+
+// Round to a whole number, ignoring floating-point dust: 27941.499999999993 is
+// really 27941.5 from the spreadsheet's interpolation, so it rounds up (as Excel did).
+export const roundHalfUp = (x) => Math.round(x + 1e-6);
 
 // Is a new reading plausible? Compares the implied average daily usage since the
 // previous reading with absolute and recent-median limits. If a later reading
@@ -255,6 +259,24 @@ export function monthUsage(byDate, month) {
     thipUnits: last.thip - first.thip, // = sum of daily usages (the sum telescopes)
     novaUnits: last.nova - first.nova,
   };
+}
+
+// One row per day of the month for the bill PDF:
+//   { date, thip, nova, thip_est, nova_est,          (readings)
+//     thipUse, novaUse, thipUseEst, novaUseEst }      (usage, null if unknown)
+export function billRows(byDate, month) {
+  return daysInMonth(month).map((date) => {
+    const r = byDate.get(date) || {};
+    const row = { date };
+    for (const m of METERS) {
+      const u = usageOn(byDate, m, date);
+      row[m] = r[m] ?? null;
+      row[m + '_est'] = !!r[m + '_est'];
+      row[m + 'Use'] = u ? u.usage : null;
+      row[m + 'UseEst'] = u ? u.est : false;
+    }
+    return row;
+  });
 }
 
 // Split the utility bill between the households (all values unrounded).

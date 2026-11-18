@@ -21,8 +21,30 @@ export function fmtDay(iso, { year = false } = {}) {
 }
 
 // 36431.2 -> '36,431'; fmtNum(4.311, 2) -> '4.31'
+// A tiny nudge (1e-6) stops floating-point dust like 6.4999999999 rounding down.
 export const fmtNum = (x, dp = 0) =>
-  x.toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+  (x + Math.sign(x) * 1e-6).toLocaleString('en-US', { minimumFractionDigits: dp, maximumFractionDigits: dp });
+
+// '2026-10' -> 'Oct 2026'
+export const fmtMonth = (month) => `${MONTHS[+month.slice(5, 7) - 1]} ${month.slice(0, 4)}`;
+
+// List of dates -> compact ranges: '18–30 Nov, 1 Dec' (dates must be sorted).
+export function fmtDateRanges(dates) {
+  const day = (iso) => new Date(`${iso}T00:00:00Z`);
+  const label = (iso) => `${day(iso).getUTCDate()} ${MONTHS[day(iso).getUTCMonth()]}`;
+  const parts = [];
+  let start = 0;
+  for (let i = 1; i <= dates.length; i++) {
+    const consecutive = i < dates.length && day(dates[i]) - day(dates[i - 1]) === 86400000
+      && dates[i].slice(0, 7) === dates[start].slice(0, 7);
+    if (consecutive) continue;
+    const a = dates[start];
+    const b = dates[i - 1];
+    parts.push(a === b ? label(a) : `${day(a).getUTCDate()}–${label(b)}`);
+    start = i;
+  }
+  return parts.join(', ');
+}
 
 // Make text safe to insert into HTML (names contain '&').
 export const esc = (s) =>

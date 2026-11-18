@@ -10,6 +10,7 @@ import { openDB, count, getMeta, setMeta, replaceAll } from './db.js';
 import { parseBackup } from './csv.js';
 import { renderDaily } from './daily.js';
 import { renderHistory } from './history.js';
+import { renderBill } from './bill.js';
 
 const app = document.getElementById('app');
 
@@ -20,9 +21,7 @@ const screens = {
 
   history: () => renderHistory(app),
 
-  bill() {
-    app.innerHTML = `<h1>Bill</h1><div class="card muted">Coming in build step 6.</div>`;
-  },
+  bill: () => renderBill(app),
 
   async data() {
     app.innerHTML = `<h1>Data</h1><div class="card muted">Loading…</div>`;
