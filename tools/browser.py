@@ -25,6 +25,7 @@ import tempfile
 import threading
 from contextlib import contextmanager
 from pathlib import Path
+from urllib.parse import urlparse
 
 from playwright.sync_api import sync_playwright
 
@@ -59,13 +60,15 @@ def static_server():
 
 
 @contextmanager
-def app_session(viewport=SCREENS["outer"], import_data=True, headless=True):
+def app_session(viewport=SCREENS["outer"], import_data=True, headless=True, url=None):
     """Open the app in a fresh Edge profile. Yields a Playwright page with
     page.base (the app URL) and page.errors (JavaScript errors seen so far).
-    With import_data, data/initial-import.csv is imported via the Data screen."""
+    With import_data, data/initial-import.csv is imported via the Data screen.
+    url: test a deployed copy (e.g. GitHub Pages) instead of the local files."""
     # A temporary real profile (deleted afterwards). Playwright's default throwaway
     # context counts as private browsing, where Edge refuses to install apps.
-    with static_server() as base, sync_playwright() as p, tempfile.TemporaryDirectory() as profile:
+    with static_server() as local, sync_playwright() as p, tempfile.TemporaryDirectory() as profile:
+        base = url or local
         context = p.chromium.launch_persistent_context(
             profile, channel="msedge", headless=headless,
             viewport=viewport, device_scale_factor=2, is_mobile=True, has_touch=True)
@@ -92,7 +95,7 @@ def app_session(viewport=SCREENS["outer"], import_data=True, headless=True):
             browser.close()
 
 
-def pwa_checks():
+def pwa_checks(url=None):
     """The step-1 DevTools checks, automated. Prints PASS/FAIL for each; returns True if all pass."""
     results = []
 
@@ -100,7 +103,7 @@ def pwa_checks():
         results.append(ok)
         print(f"{'PASS' if ok else 'FAIL'}  {name}{'  - ' + str(detail) if detail else ''}")
 
-    with app_session(import_data=False) as page:
+    with app_session(import_data=False, url=url) as page:
         # Service worker: the page is controlled by it once it has activated.
         page.wait_for_function("navigator.serviceWorker.controller !== null || navigator.serviceWorker.ready", timeout=10000)
         state = page.evaluate("navigator.serviceWorker.ready.then(r => r.active && r.active.state)")
@@ -118,7 +121,8 @@ def pwa_checks():
         check("One app cache", len(cache["keys"]) == 1, cache["keys"])
         listed = [line.strip().strip("',") for line in sw_src.split("APP_FILES = [")[1].split("]")[0].splitlines()
                   if line.strip().startswith("'")]
-        missing = [f for f in listed if f != "./" and "/" + f not in cache.get("files", [])]
+        base_path = urlparse(page.base).path  # "/" locally, "/elec-bill/" on GitHub Pages
+        missing = [f for f in listed if f != "./" and base_path + f not in cache.get("files", [])]
         check("All APP_FILES cached", not missing, missing or f"{len(listed)} files in {cache.get('name')}")
         js_files = sorted(p.relative_to(ROOT).as_posix() for d in ("js", "lib") for p in (ROOT / d).glob("*.js"))
         unlisted = [f for f in js_files if f not in listed]
@@ -152,14 +156,15 @@ def main():
     ap.add_argument("--out", default=str(ROOT / "data" / "screenshots"),
                     help="output folder (default data/screenshots, which git ignores)")
     ap.add_argument("--check", action="store_true", help="run the PWA checks instead of screenshots")
+    ap.add_argument("--url", help="test a deployed copy, e.g. https://nigelchurch.github.io/elec-bill/")
     args = ap.parse_args()
     if args.check:
-        raise SystemExit(0 if pwa_checks() else 1)
+        raise SystemExit(0 if pwa_checks(args.url) else 1)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
     for name, viewport in SCREENS.items():
-        with app_session(viewport) as page:
+        with app_session(viewport, url=args.url) as page:
             for screen, wait in [("daily", "#dailyForm"), ("history", "table.hist"), ("data", ".kv")]:
                 page.goto(page.base + "#" + screen)
                 page.wait_for_selector(wait)
