@@ -172,7 +172,9 @@ export function recentRealUsages(byDate, meter, date, n = SANITY.MEDIAN_DAYS) {
 
 // ---------- Sanity check ----------
 
-// Last 4 digits of a meter value, as shown on the meter (e.g. 28074 -> '8074').
+// Last 4 digits of a meter value, as shown on the meter (e.g. 28074 -> '8074',
+// 40021 -> '0021'). Used for every reading shown on screen and in the PDF; the
+// stored full value keeps the extra leading digit(s), which count rollovers.
 export const last4 = (full) => String(Math.round(full) % 10000).padStart(4, '0');
 
 // Is a new reading plausible? Compares the implied average daily usage since the

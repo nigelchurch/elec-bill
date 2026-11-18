@@ -3,7 +3,7 @@
 // editing, sanity checks and re-interpolating neighbouring estimated days.
 
 import { getAll } from './db.js';
-import { indexByDate, usageOn, METERS } from './calc.js';
+import { indexByDate, usageOn, METERS, last4 } from './calc.js';
 import { MONTHS, DAYS, NAMES, esc } from './format.js';
 
 const PAGE = 120;        // rows shown at first; "Show older" adds a year at a time
@@ -72,15 +72,17 @@ export async function renderHistory(app) {
 
 function rowHTML(r, byDate) {
   const d = new Date(`${r.date}T00:00:00Z`);
-  const cell = (value, est, cls = '') => {
+  // fmt: how to show the number. Readings show only the 4 digits on the meter
+  // (the stored full value also counts rollovers); usage is rounded kWh.
+  const cell = (value, est, fmt, cls = '') => {
     const classes = [cls, est ? 'est' : ''].filter(Boolean).join(' ');
-    const text = value === null || value === undefined ? '' : Math.round(value);
+    const text = value === null || value === undefined ? '' : fmt(value);
     return `<td${classes ? ` class="${classes}"` : ''}>${text}</td>`;
   };
-  const readingCells = METERS.map((m) => cell(r[m], r[m + '_est']));
+  const readingCells = METERS.map((m) => cell(r[m], r[m + '_est'], last4));
   const usageCells = METERS.map((m) => {
     const u = usageOn(byDate, m, r.date);
-    return u ? cell(u.usage, u.est, 'use') : cell(null, false, 'use');
+    return u ? cell(u.usage, u.est, Math.round, 'use') : cell(null, false, Math.round, 'use');
   });
   return `<tr data-date="${r.date}" id="row-${r.date}">
     <td>${d.getUTCDate()}</td><td class="day">${DAYS[d.getUTCDay()]}</td>
