@@ -237,13 +237,3 @@ html.go-next::view-transition-new(root) { animation: page-in-right  0.3s cubic-b
 html.go-prev::view-transition-old(root) { animation: page-out-right 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
 html.go-prev::view-transition-new(root) { animation: page-in-left   0.3s cubic-bezier(0.25, 0.8, 0.25, 1) both; }
 
-/* ---- Daily: built-in number keypad (the phone's keyboard stays closed) ---- */
-.keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
-          max-width: 420px; margin: 4px auto 0; }
-.keypad button { min-height: 54px; padding: 0; font-size: 1.5rem; font-weight: 600;
-                 background: var(--blue-light); color: var(--blue); }
-.keypad button:active { filter: brightness(0.9); }
-.keypad button.enter { background: var(--blue); color: #fff; font-size: 1.15rem; }
-.keypad button[data-key="back"] { background: var(--border); color: var(--text); }
-/* The boxes are typed into with the keypad: keep the cursor and selection visible. */
-#in-thip, #in-nova { caret-color: var(--blue); }

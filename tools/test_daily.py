@@ -1,6 +1,6 @@
 """Browser test of the Daily screen:
-  - on opening, the cursor is already in the Gaae&Thip box, and the built-in
-    keypad types into it (the phone's keyboard is never needed)
+  - the boxes use the phone's number keyboard; typing 4 digits in Gaae&Thip
+    moves on to Nig&Jop
   - entering a reading after days with no reading asks "Unfilled readings":
     No leaves them blank, Yes fills them (estimated), Back saves nothing.
   - 0000 offers to clear the day, or save a real 0000; correcting a wrong
@@ -42,10 +42,10 @@ def record(page, day):
     })""", day)
 
 
-def tap_keys(page, digits):
-    """Tap keypad keys with touch events, as on the phone."""
-    for k in digits:
-        page.tap(f"#keypad button[data-key='{k}']")
+def type_in(page, box, digits):
+    """Tap a box and type into it, as on the phone."""
+    page.tap(f"#in-{box}")
+    page.keyboard.type(digits)
 
 
 def open_day(page, day):
@@ -70,27 +70,21 @@ for size in ("outer", "fold5", "inner"):
         page.reload()                          # a fresh start, as when opening the app
         page.wait_for_selector("#dailyForm")
         page.wait_for_timeout(300)
-        check(f"[{size}] Cursor in Gaae&Thip on opening",
-              page.evaluate("document.activeElement?.id") == "in-thip")
         if size != "outer":
-            page.screenshot(path=str(OUT / f"daily-keypad-{size}.png"))
-            tap_keys(page, "80804760")
+            page.screenshot(path=str(OUT / f"daily-{size}.png"))
+            type_in(page, "thip", "80804760")
             page.click("#enterBtn")
             page.wait_for_selector("dialog.summary[open]")
             page.screenshot(path=str(OUT / f"daily-fill-{size}.png"))
             continue
 
-        page.screenshot(path=str(OUT / "daily-keypad-outer.png"))
-        check("Boxes never open the phone's keyboard",
-              page.eval_on_selector_all("#in-thip, #in-nova", "els => els.every(e => e.inputMode === 'none')"))
-        # Keypad taps go straight into the box, then on to Nig&Jop.
-        tap_keys(page, "809")
-        tap_keys(page, ["back", "8", "0"])
-        check("Keypad types into Gaae&Thip (with delete), cursor moves on",
-              page.input_value("#in-thip") == "8080"
-              and page.evaluate("document.activeElement?.id") == "in-nova",
-              page.input_value("#in-thip"))
-        tap_keys(page, "4760")
+        page.screenshot(path=str(OUT / "daily-outer.png"))
+        check("Boxes use the phone's number keyboard",
+              page.eval_on_selector_all("#in-thip, #in-nova", "els => els.every(e => e.inputMode === 'numeric')"))
+        type_in(page, "thip", "8080")
+        check("4 digits in Gaae&Thip, cursor moves on to Nig&Jop",
+              page.evaluate("document.activeElement?.id") == "in-nova", page.input_value("#in-thip"))
+        page.keyboard.type("4760")
         page.tap("#enterBtn")
         page.wait_for_selector("dialog.summary[open]")
         text = page.text_content("dialog.summary")
@@ -136,8 +130,7 @@ for size in ("outer", "fold5", "inner"):
 
         # 0000 on today's Gaae&Thip: offer to clear it (and the estimates next to it).
         open_day(page, TODAY.isoformat())
-        page.focus("#in-thip")
-        tap_keys(page, "0000")
+        type_in(page, "thip", "0000")
         page.tap("#enterBtn")
         page.wait_for_selector("dialog.summary[open]")
         text = " ".join(page.text_content("dialog.summary").split())
@@ -154,16 +147,14 @@ for size in ("outer", "fold5", "inner"):
         # A wrong 0000 saved as a real reading on the 14th (taken as passing
         # 30,000), then corrected: the days after it must follow.
         open_day(page, "2026-11-14")
-        page.focus("#in-thip")
-        tap_keys(page, "0000")
+        type_in(page, "thip", "0000")
         page.tap("#enterBtn")
         page.click("dialog.summary button[value=real]")   # the "Are you sure?" is accepted
         page.wait_for_timeout(400)
         check("Real 0000 saved; later readings follow it",
               record(page, "2026-11-14")["thip"] == 30000 and record(page, "2026-11-15")["thip"] == 38072,
               (record(page, "2026-11-14")["thip"], record(page, "2026-11-15")["thip"]))
-        page.focus("#in-thip")
-        tap_keys(page, "8071")
+        type_in(page, "thip", "8071")
         page.tap("#enterBtn")
         page.wait_for_timeout(400)
         later = [record(page, f"2026-11-{d}")["thip"] for d in (14, 15, 16, 17)]

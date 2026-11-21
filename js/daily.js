@@ -8,10 +8,6 @@
 //   4. save       – all changes in one database transaction; later readings are
 //                   renumbered so a corrected mistake can't spoil their usage
 // Typing 0000 offers to clear the day's reading instead (leave the day blank).
-//
-// The screen has its own number keypad, so the phone's keyboard never opens
-// here (inputmode="none" on the boxes). Chrome only opens the phone's keyboard
-// after a tap on the box; the built-in keypad works straight away.
 
 import { getAll, putMany } from './db.js';
 import {
@@ -38,26 +34,6 @@ export function renderDaily(container, startDate = null) {
   return draw();
 }
 
-// Put the cursor in the Gaae&Thip box, ready to type on the keypad.
-function focusFirstBox() {
-  document.getElementById('in-thip')?.focus({ preventScroll: true });
-}
-
-// Coming back to the app (e.g. reopened from the home screen while it was
-// still running in the background): if the Daily screen is showing, move on to
-// today if the date has changed since, and put the cursor back in the box.
-document.addEventListener('visibilitychange', async () => {
-  if (document.visibilityState !== 'visible' || fromHistory) return;
-  if (!app?.isConnected || !document.getElementById('dailyForm')) return;
-  if (date !== todayISO() && !document.getElementById('in-thip').value
-      && !document.getElementById('in-nova').value) {
-    date = todayISO();
-    await draw();
-  } else if (!document.activeElement?.matches('#in-thip, #in-nova')) {
-    focusFirstBox();
-  }
-});
-
 async function draw() {
   const readings = await getAll('readings');
   const byDate = indexByDate(readings);
@@ -78,12 +54,7 @@ async function draw() {
       <div class="row">
         ${METERS.map((m) => meterField(m, readings, byDate)).join('')}
       </div>
-      <div class="keypad" id="keypad">
-        ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button type="button" data-key="${n}">${n}</button>`).join('')}
-        <button type="button" class="secondary" data-key="back" aria-label="Delete">⌫</button>
-        <button type="button" data-key="0">0</button>
-        <button type="submit" class="enter" id="enterBtn">Enter</button>
-      </div>
+      <button type="submit" class="full" id="enterBtn">Enter</button>
       <p id="dailyMsg" class="error"></p>
     </form>
     ${fromHistory ? '<button type="button" class="secondary full" id="backBtn">‹ Back to History</button>' : ''}
@@ -103,44 +74,12 @@ async function draw() {
   for (const m of METERS) {
     const input = document.getElementById(`in-${m}`);
     if (input.value) instantCheck(m, input.value, readings, byDate); // usage for a saved reading
-    input.addEventListener('focus', () => { lastBox = input; input.select(); }); // typing replaces the saved value
+    input.addEventListener('focus', () => input.select()); // typing replaces the saved value
     input.addEventListener('input', () => {
       instantCheck(m, input.value, readings, byDate);
       if (m === 'thip' && input.value.length === 4) document.getElementById('in-nova').focus();
     });
   }
-
-  // The keypad. Pressing a key mustn't move the cursor out of the box, so the
-  // press itself is cancelled (pointerdown); the tap still counts as a click.
-  const keypad = document.getElementById('keypad');
-  keypad.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
-  keypad.addEventListener('click', (e) => {
-    const key = e.target.closest('button')?.dataset.key;
-    if (key) pressKey(key);
-  });
-
-  focusFirstBox();
-}
-
-let lastBox = null; // the box the keypad types into if neither has the cursor
-
-// A keypad key: type a digit, or delete (⌫), at the cursor, as a keyboard would.
-function pressKey(key) {
-  let input = document.activeElement;
-  if (!input?.matches('#in-thip, #in-nova')) {
-    input = lastBox?.isConnected ? lastBox : document.getElementById('in-thip');
-    input.focus({ preventScroll: true });
-  }
-  const start = input.selectionStart;
-  const end = input.selectionEnd;
-  if (key === 'back') {
-    if (start === end && start === 0) return;
-    input.setRangeText('', start === end ? start - 1 : start, end, 'end');
-  } else {
-    if (input.value.length - (end - start) >= 4) return; // already 4 digits
-    input.setRangeText(key, start, end, 'end');
-  }
-  input.dispatchEvent(new Event('input', { bubbles: true })); // run the usual checks
 }
 
 // Feedback under a box once 4 digits are typed:
@@ -239,7 +178,7 @@ function meterField(m, readings, byDate) {
   return `
     <div class="field">
       <label for="in-${m}">${esc(NAMES[m])}</label>
-      <input id="in-${m}" inputmode="none" pattern="[0-9]*" maxlength="4"
+      <input id="in-${m}" inputmode="numeric" pattern="[0-9]*" maxlength="4"
              value="${saved.real ?? ''}" placeholder="${saved.est ?? ''}">
       <div class="hint">${hint}</div>
       <div class="info" id="info-${m}"></div>
