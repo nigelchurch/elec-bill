@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 import {
-  addDays, daysBetween, daysInMonth, nextMonth, rollover, interpolate, applyReading,
+  addDays, daysBetween, daysInMonth, nextMonth, rollover, interpolate, applyReading, missedDays,
   previousReading, nextRealReading,
   indexByDate, usageOn, median, recentRealUsages, sanityCheck, seasonalTypical,
   yesterdayComparison, monthUsage, billSplit, billRows, measuredAverage,
@@ -69,6 +69,20 @@ test('applyReading: gap of missed days is interpolated and flagged', () => {
   ]);
   // The other meter is untouched in new records.
   assert.equal(out[0].thip, null);
+});
+
+test('applyReading with fill = false leaves the missed days blank', () => {
+  const readings = [rec('2026-11-17', 28074, 44659)];
+  const out = applyReading(readings, 'nova', '2026-11-21', 44759, false);
+  assert.deepEqual(out.map((r) => [r.date, r.nova, r.nova_est]), [['2026-11-21', 44759, false]]);
+});
+
+test('missedDays lists the blank days before a reading', () => {
+  const readings = [rec('2026-11-17', 28074, 44659), rec('2026-11-19', null, 44700)];
+  assert.deepEqual(missedDays(readings, 'nova', '2026-11-22'), ['2026-11-20', '2026-11-21']);
+  assert.deepEqual(missedDays(readings, 'nova', '2026-11-20'), []);
+  assert.deepEqual(missedDays(readings, 'thip', '2026-11-19'), ['2026-11-18']);
+  assert.deepEqual(missedDays([], 'nova', '2026-11-20'), []);
 });
 
 test('applyReading: real value entered inside an estimated gap re-interpolates both sides', () => {

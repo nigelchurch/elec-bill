@@ -7,7 +7,7 @@
 // sw.js has changed, installs the new version, downloads fresh copies of the
 // files, and deletes the old cache.
 
-const CACHE_VERSION = 'v31';
+const CACHE_VERSION = 'v32';
 const CACHE_NAME = `elecbill-${CACHE_VERSION}`;
 
 // Every file the app needs. Paths are relative to this file (works on GitHub Pages
@@ -28,6 +28,7 @@ const APP_FILES = [
   'js/pdf.js',
   'js/files.js',
   'js/nav.js',
+  'js/dialog.js',
   'lib/jspdf.umd.min.js',
   'lib/pdf.min.js',
   'lib/pdf.worker.min.js',

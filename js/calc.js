@@ -80,6 +80,15 @@ export function nextRealReading(readings, meter, date) {
   return best;
 }
 
+// Dates with no reading for `meter` between its previous reading and `date`
+// (the days that gap-filling would estimate). Empty if there is no gap.
+export function missedDays(readings, meter, date) {
+  const prev = previousReading(readings, meter, date);
+  const out = [];
+  if (prev) for (let d = addDays(prev.date, 1); d < date; d = addDays(d, 1)) out.push(d);
+  return out;
+}
+
 // Linear interpolation for the dates strictly between two readings.
 // Returns [{ date, value }] for each missing day (empty if the dates are adjacent).
 export function interpolate(fromDate, fromValue, toDate, toValue) {
@@ -95,9 +104,10 @@ export function interpolate(fromDate, fromValue, toDate, toValue) {
 //   - The record for `date` gets the value, marked as real.
 //   - Missing days between the previous reading and `date` are filled with
 //     interpolated values marked estimated.
+//     (Skipped with fill = false: the user chose to leave those days blank.)
 //   - Any estimated run directly before or after `date` is re-interpolated, so
 //     entering (or editing) a real value in the middle of a gap fixes both sides.
-export function applyReading(readings, meter, date, full) {
+export function applyReading(readings, meter, date, full, fill = true) {
   const byDate = indexByDate(readings);
   const changed = new Map(); // date -> updated copy of record
   const rec = (d) => changed.get(d) || { ...(byDate.get(d) || blankRecord(d)) };
@@ -112,7 +122,7 @@ export function applyReading(readings, meter, date, full) {
 
   // Fill missing days back to the previous reading (with placeholders; values come below).
   const prev = previousReading(readings, meter, date);
-  if (prev) {
+  if (prev && fill) {
     for (let d = addDays(prev.date, 1); d < date; d = addDays(d, 1)) {
       const r = byDate.get(d);
       if (!r || r[meter] === null || r[meter] === undefined) set(d, 0, true);

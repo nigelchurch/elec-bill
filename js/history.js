@@ -1,15 +1,18 @@
 // History screen: every day's readings and usage, newest first, grouped by
-// month. Each month starts collapsed, showing only its heading with the
-// average daily usage of its measured days; tap the heading to open it.
+// month. The current month starts open; the others start collapsed, showing
+// only their heading with the average daily usage of their measured days; tap
+// a heading to open/close it.
 // Tapping a day opens the Daily screen on that date, which already handles
 // editing, sanity checks and re-interpolating neighbouring estimated days.
 
 import { navigate } from './nav.js';
 import { getAll } from './db.js';
 import { indexByDate, usageOn, measuredAverage, METERS, last4, roundHalfUp } from './calc.js';
-import { MONTHS, DAYS, NAMES, esc } from './format.js';
+import { MONTHS, DAYS, NAMES, todayISO, esc } from './format.js';
 
-const open = new Set();  // months the user has opened ('YYYY-MM'), kept while the app runs
+// Months that are open ('YYYY-MM'), kept while the app runs. Starts with the
+// current month; the user can close it like any other.
+const open = new Set([todayISO().slice(0, 7)]);
 let lastOpened = null;   // date of the row last tapped, to scroll back to it
 
 export async function renderHistory(app) {

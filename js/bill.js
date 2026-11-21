@@ -10,6 +10,7 @@ import { indexByDate, monthUsage, billSplit, billRows, addDays } from './calc.js
 import { buildBillPdf, pdfFilename } from './pdf.js';
 import { downloadBlob, shareFile } from './files.js';
 import { NAMES, todayISO, fmtNum, fmtMonth, fmtDateRanges, esc } from './format.js';
+import { ask } from './dialog.js';
 
 const FIELDS = [
   { key: 'P', label: 'P', unit: 'kWh' },
@@ -179,9 +180,7 @@ async function generate() {
 function confirmSummary(bill) {
   const s = bill.split;
   const high = s.rate > RATE_WARNING;
-  const dlg = document.createElement('dialog');
-  dlg.className = 'summary';
-  dlg.innerHTML = `
+  return ask(`
     <h2>${fmtMonth(bill.month)}: check before generating</h2>
     <table class="kv">
       <tr><td>Tariff rate</td><td class="${high ? 'rate-high' : ''}">${fmtNum(s.rate, 2)} Baht/kWh</td></tr>
@@ -190,23 +189,11 @@ function confirmSummary(bill) {
       <tr><td>Boy&amp;Yui</td><td>${fmtNum(s.boyYui)} Baht</td></tr>
       <tr><td>Total bill</td><td>${fmtNum(bill.totalBill, 2)} Baht</td></tr>
     </table>
-    ${high ? `<p class="rate-high">The rate is above ${fmtNum(RATE_WARNING, 1)} Baht/kWh. Please check P, OP, H and the total.</p>` : ''}
-    <div class="row btn-row">
-      <button type="button" class="secondary" value="cancel">Cancel</button>
-      <button type="button" value="ok">Continue</button>
-    </div>`;
-  document.body.appendChild(dlg);
-  return new Promise((resolve) => {
-    dlg.addEventListener('click', (e) => {
-      const v = e.target.closest('button')?.value;
-      if (v) dlg.close(v);
-    });
-    dlg.addEventListener('close', () => { // also fires for the phone's Back gesture
-      resolve(dlg.returnValue === 'ok');
-      dlg.remove();
-    });
-    dlg.showModal(); // a "modal" dialog: the page behind can't be used until it closes
-  });
+    ${high ? `<p class="rate-high">The rate is above ${fmtNum(RATE_WARNING, 1)} Baht/kWh. Please check P, OP, H and the total.</p>` : ''}`,
+  [
+    { value: 'cancel', label: 'Cancel', secondary: true },
+    { value: 'ok', label: 'Continue' },
+  ]).then((answer) => answer === 'ok');
 }
 
 // Summary of the split, Share / Save buttons, and a preview of the PDF itself.

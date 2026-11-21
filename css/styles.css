@@ -184,6 +184,7 @@ button:disabled { opacity: 0.5; }
 dialog.summary { border: none; border-radius: var(--radius); padding: 20px; width: min(420px, calc(100% - 32px)); }
 dialog.summary::backdrop { background: rgba(0, 0, 0, 0.45); }
 dialog.summary h2 { margin-top: 0; }
+dialog.summary ul { padding-left: 20px; }
 .rate-high, .kv td.rate-high { color: var(--danger); font-weight: 700; } /* beats .kv td:last-child */
 
 /* ---- Top bar menu: links inline, or a ☰ drop-down when they don't fit ---- */

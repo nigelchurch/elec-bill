@@ -1,10 +1,12 @@
-"""Browser test of the History screen: months start collapsed, with each
-month's average daily usage of measured days in its heading; tapping a heading
-opens/closes it; returning from an edit keeps that month open.
+"""Browser test of the History screen: the current month starts open, the others
+collapsed, with each month's average daily usage of measured days in its
+heading; tapping a heading opens/closes it; returning from an edit keeps that
+month open.
 
     python tools/test_history.py
 """
 import sys
+from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -29,13 +31,19 @@ for size in ("outer", "fold5", "inner"):
         page.goto(page.base + "#history")
         page.wait_for_selector("table.hist tr.month")
         page.wait_for_function("document.getAnimations().length === 0")
-        page.screenshot(path=str(OUT / f"history-collapsed-{size}.png"))
+        page.screenshot(path=str(OUT / f"history-start-{size}.png"))
         if size != "outer":
             continue
 
         months = page.locator("table.hist tr.month")
-        check("All months listed, all collapsed", months.count() > 50 and visible_days(page) == 0,
-              f"{months.count()} months, {visible_days(page)} days showing")
+        # The current month (Nov 2026 in the test data: 1-17 Nov) starts open, the rest collapsed.
+        cur = date.today().strftime("%Y-%m")
+        open_months = page.eval_on_selector_all("tbody.open", "els => els.map(e => e.dataset.month)")
+        check("All months listed, only the current one open",
+              months.count() > 50 and open_months == [cur] and visible_days(page) == 17,
+              f"{months.count()} months, open {open_months}, {visible_days(page)} days showing")
+        page.locator(f"tbody[data-month='{cur}'] tr.month").click()  # close it
+        check("Current month closes like the others", visible_days(page) == 0, visible_days(page))
         oct26 = page.locator("tbody[data-month='2026-10'] tr.month th")
         texts = [oct26.nth(i).text_content().strip() for i in range(3)]
         # October 2026: 21 measured days (10 estimated, an away period, are left out).

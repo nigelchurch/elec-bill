@@ -3,15 +3,17 @@
 // On Enter, for each meter that has digits typed:
 //   1. rollover   – turn the 4 digits into the full meter value
 //   2. sanity     – collect warnings ("Are you sure?") but never block
-//   3. gap-fill   – estimate any missed days since the previous reading
+//   3. gap-fill   – if days before it have no reading, ask whether to fill them
+//                   with averaged (interpolated) values
 //   4. save       – all changes in one database transaction
 
 import { getAll, putMany } from './db.js';
 import {
   METERS, addDays, indexByDate, rollover, previousReading, nextRealReading,
-  applyReading, sanityCheck, recentRealUsages, seasonalTypical, last4,
+  applyReading, missedDays, sanityCheck, recentRealUsages, seasonalTypical, last4,
 } from './calc.js';
-import { NAMES, MONTHS, todayISO, fmtDay, fmtNum, esc } from './format.js';
+import { NAMES, MONTHS, todayISO, fmtDay, fmtNum, fmtDateRanges, esc } from './format.js';
+import { ask } from './dialog.js';
 
 // TESTING SWITCH: true lets you pick dates after today (for fictional future
 // readings). Set back to false before deploying.
@@ -27,8 +29,30 @@ export function renderDaily(container, startDate = null) {
   app = container;
   fromHistory = /^\d{4}-\d{2}-\d{2}$/.test(startDate || '');
   date = fromHistory ? startDate : todayISO();
-  return draw();
+  return draw().then(focusFirstBox);
 }
+
+// Put the cursor in the Gaae&Thip box, ready to type, when today's reading
+// hasn't been entered yet (not when editing a day from History).
+function focusFirstBox() {
+  const input = document.getElementById('in-thip');
+  if (!input || fromHistory || date !== todayISO() || input.value) return;
+  input.focus({ preventScroll: true });
+}
+
+// Coming back to the app (e.g. reopened from the home screen while it was
+// still running in the background): if the Daily screen is showing, move on to
+// today if the date has changed since, and put the cursor back in the box.
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible' || fromHistory) return;
+  if (!app?.isConnected || !document.getElementById('dailyForm')) return;
+  if (date !== todayISO() && !document.getElementById('in-thip').value
+      && !document.getElementById('in-nova').value) {
+    date = todayISO();
+    await draw();
+  }
+  focusFirstBox();
+});
 
 async function draw() {
   const readings = await getAll('readings');
@@ -127,7 +151,7 @@ function checkMeter(m, digits, readings, byDate) {
     usage = s.days === 1
       ? `${fmtNum(s.total)} kWh since ${fmtDay(prev.date)}`
       : `${fmtNum(s.total)} kWh over ${s.days} days (${fmtNum(s.perDay, 1)}/day), `
-        + `${s.days - 1} missed day${s.days > 2 ? 's' : ''} will be estimated`;
+        + `${s.days - 1} day${s.days > 2 ? 's' : ''} with no reading`;
     if (s.suspicious) warnings.push(`${usage}: ${s.reasons.join('; ')}`);
     else if (m === 'nova' && !prev.nova_est) usage += seasonal(byDate, s.perDay);
   }
@@ -202,21 +226,13 @@ async function onEnter(readings, byDate) {
     return;
   }
 
-  // Work out every change before saving anything, collecting warnings on the way.
-  let working = readings;        // readings including changes so far
-  const toSave = new Map();      // date -> record
+  // Check each meter, collecting warnings. The meters are independent, so each
+  // is checked against the readings as loaded.
   const warnings = [];
-
-  for (const { m, digits } of entries) {
-    // The meters are independent, so each is checked against the readings as loaded.
-    const { full, warnings: w, info } = checkMeter(m, digits, readings, byDate);
-    for (const text of [...info, ...w]) warnings.push(`${NAMES[m]}: ${text}.`);
-
-    // Gap-fill and merge into the working copy (so the next meter sees these changes).
-    const changed = applyReading(working, m, date, full);
-    const map = indexByDate(working);
-    for (const r of changed) { map.set(r.date, r); toSave.set(r.date, r); }
-    working = [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+  for (const entry of entries) {
+    const { full, warnings: w, info } = checkMeter(entry.m, entry.digits, readings, byDate);
+    entry.full = full;
+    for (const text of [...info, ...w]) warnings.push(`${NAMES[entry.m]}: ${text}.`);
   }
 
   if (warnings.length) {
@@ -224,6 +240,45 @@ async function onEnter(readings, byDate) {
     if (!ok) return;
   }
 
+  // Days just before this one with no reading: ask whether to fill them.
+  const gaps = entries
+    .map(({ m }) => ({ m, days: missedDays(readings, m, date) }))
+    .filter((g) => g.days.length);
+  let fill = true;
+  if (gaps.length) {
+    const answer = await askFill(gaps);
+    if (!answer) return;               // closed with Back: nothing saved
+    fill = answer === 'yes';
+  }
+
+  // Work out every change, then save them all at once. Each meter's changes go
+  // into a working copy, so the next meter sees them (both may touch a day).
+  let working = readings;
+  const toSave = new Map();      // date -> record
+  for (const { m, full } of entries) {
+    const changed = applyReading(working, m, date, full, fill);
+    const map = indexByDate(working);
+    for (const r of changed) { map.set(r.date, r); toSave.set(r.date, r); }
+    working = [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+  }
+
   await putMany('readings', [...toSave.values()]);
   draw(); // redraw: boxes show the saved values with their usage
+}
+
+// "Unfilled readings" pop-up. gaps: [{ m, days: ['YYYY-MM-DD', …] }].
+// Resolves 'yes' (fill), 'no' (leave blank) or '' (closed with Back).
+function askFill(gaps) {
+  const lines = gaps.map(({ m, days }) =>
+    `<li><strong>${esc(NAMES[m])}</strong>: ${days.length} day${days.length > 1 ? 's' : ''} (${fmtDateRanges(days)})</li>`);
+  const one = gaps.length === 1 && gaps[0].days.length === 1;
+  return ask(`
+    <h2>Unfilled readings</h2>
+    <p>There ${one ? 'is a day' : 'are days'} before ${fmtDay(date)} with no reading:</p>
+    <ul>${lines.join('')}</ul>
+    <p>Fill ${one ? 'it' : 'them'} with averaged values? They are marked as estimated.</p>`,
+  [
+    { value: 'no', label: 'No, leave blank', secondary: true },
+    { value: 'yes', label: 'Yes, fill' },
+  ]);
 }
