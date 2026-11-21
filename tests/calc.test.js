@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 import {
-  addDays, daysBetween, daysInMonth, nextMonth, rollover, interpolate, applyReading, missedDays,
+  addDays, daysBetween, daysInMonth, nextMonth, rollover, interpolate, applyReading, missedDays, clearReading, renumberAfter, recordReading, removeReading,
   previousReading, nextRealReading,
   indexByDate, usageOn, median, recentRealUsages, sanityCheck, seasonalTypical,
   yesterdayComparison, monthUsage, billSplit, billRows, measuredAverage,
@@ -255,4 +255,53 @@ test('measuredAverage: average daily usage of measured days only', () => {
   assert.equal(measuredAverage(byDate, 'thip', days), 10 / 3);
   assert.equal(measuredAverage(byDate, 'nova', days), 20);
   assert.equal(measuredAverage(byDate, 'nova', ['2026-01-02']), null);
+});
+
+test('clearReading blanks the day and the estimated runs next to it', () => {
+  const readings = [
+    rec('2026-11-10', 100, 500),
+    { ...rec('2026-11-11', 101, 510), thip_est: true },
+    rec('2026-11-12', 102, 520),
+    { ...rec('2026-11-13', 103, 530), thip_est: true },
+    rec('2026-11-14', 104, 540),
+  ];
+  const out = clearReading(readings, 'thip', '2026-11-12');
+  assert.deepEqual(out.map((r) => [r.date, r.thip, r.thip_est, r.nova]), [
+    ['2026-11-11', null, false, 510],
+    ['2026-11-12', null, false, 520],
+    ['2026-11-13', null, false, 530],
+  ]);
+  assert.deepEqual(clearReading(readings, 'thip', '2026-11-20'), []); // nothing saved there
+});
+
+test('renumberAfter fixes readings that followed a wrong 0000 once it is corrected', () => {
+  // 0000 typed by mistake on the 14th was taken as passing 30,000, so the
+  // 15th's 8072 was stored as 38072. With the 14th corrected to 8071:
+  const readings = [rec('2026-11-13', 28069, null), rec('2026-11-14', 28071, null), rec('2026-11-15', 38072, null)];
+  assert.deepEqual(renumberAfter(readings, 'thip', '2026-11-14'), [rec('2026-11-15', 28072, null)]);
+  // A genuine rollover is kept, and fractions (estimates) survive.
+  const ok = [rec('2026-11-13', 29990, null), rec('2026-11-14', 30005.5, null), rec('2026-11-15', 30020, null)];
+  assert.deepEqual(renumberAfter(ok, 'thip', '2026-11-13'), []);
+});
+
+test('recordReading: correcting a wrong reading fixes the later ones and their estimates', () => {
+  // 14th wrongly saved as 0000 (-> 30000); 15th-16th then estimated up to 38077 on the 17th.
+  const readings = [
+    rec('2026-11-13', 28069, null), rec('2026-11-14', 30000, null),
+    { ...rec('2026-11-15', 32692, null), thip_est: true }, { ...rec('2026-11-16', 35385, null), thip_est: true },
+    rec('2026-11-17', 38077, null),
+  ];
+  const out = recordReading(readings, 'thip', '2026-11-14', 28071);
+  assert.deepEqual(out.map((r) => [r.date, r.thip, r.thip_est]), [
+    ['2026-11-14', 28071, false],
+    ['2026-11-15', 28073, true],
+    ['2026-11-16', 28075, true],
+    ['2026-11-17', 28077, false],
+  ]);
+});
+
+test('removeReading clears, then renumbers what follows', () => {
+  const readings = [rec('2026-11-13', 28069, null), rec('2026-11-14', 30000, null), rec('2026-11-15', 38072, null)];
+  assert.deepEqual(removeReading(readings, 'thip', '2026-11-14').map((r) => [r.date, r.thip]),
+    [['2026-11-14', null], ['2026-11-15', 28072]]);
 });

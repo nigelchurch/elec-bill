@@ -1,7 +1,10 @@
 """Browser test of the Daily screen:
-  - on opening, the cursor is already in the Gaae&Thip box (today not yet entered)
+  - on opening, the cursor is already in the Gaae&Thip box, and the built-in
+    keypad types into it (the phone's keyboard is never needed)
   - entering a reading after days with no reading asks "Unfilled readings":
     No leaves them blank, Yes fills them (estimated), Back saves nothing.
+  - 0000 offers to clear the day, or save a real 0000; correcting a wrong
+    reading renumbers the readings after it.
 
 Uses data/initial-import.csv, whose last reading is 17 Nov 2026, so today's
 date (on this PC) must be at least 19 Nov 2026.
@@ -39,6 +42,19 @@ def record(page, day):
     })""", day)
 
 
+def tap_keys(page, digits):
+    """Tap keypad keys with touch events, as on the phone."""
+    for k in digits:
+        page.tap(f"#keypad button[data-key='{k}']")
+
+
+def open_day(page, day):
+    page.fill("#date", day)
+    page.dispatch_event("#date", "change")
+    page.wait_for_selector(f"#date[value='{day}']")
+    page.wait_for_timeout(200)
+
+
 def enter(page, thip=None, nova=None):
     for m, v in (("thip", thip), ("nova", nova)):
         if v is not None:
@@ -57,20 +73,25 @@ for size in ("outer", "fold5", "inner"):
         check(f"[{size}] Cursor in Gaae&Thip on opening",
               page.evaluate("document.activeElement?.id") == "in-thip")
         if size != "outer":
-            page.keyboard.type("8080")
-            page.keyboard.type("4760")
+            page.screenshot(path=str(OUT / f"daily-keypad-{size}.png"))
+            tap_keys(page, "80804760")
             page.click("#enterBtn")
             page.wait_for_selector("dialog.summary[open]")
             page.screenshot(path=str(OUT / f"daily-fill-{size}.png"))
             continue
 
-        # Typing straight away goes into the box, then on to Nig&Jop.
-        page.keyboard.type("8080")
-        check("Typing goes into Gaae&Thip, cursor moves on",
+        page.screenshot(path=str(OUT / "daily-keypad-outer.png"))
+        check("Boxes never open the phone's keyboard",
+              page.eval_on_selector_all("#in-thip, #in-nova", "els => els.every(e => e.inputMode === 'none')"))
+        # Keypad taps go straight into the box, then on to Nig&Jop.
+        tap_keys(page, "809")
+        tap_keys(page, ["back", "8", "0"])
+        check("Keypad types into Gaae&Thip (with delete), cursor moves on",
               page.input_value("#in-thip") == "8080"
-              and page.evaluate("document.activeElement?.id") == "in-nova")
-        page.keyboard.type("4760")
-        page.click("#enterBtn")
+              and page.evaluate("document.activeElement?.id") == "in-nova",
+              page.input_value("#in-thip"))
+        tap_keys(page, "4760")
+        page.tap("#enterBtn")
         page.wait_for_selector("dialog.summary[open]")
         text = page.text_content("dialog.summary")
         check("Pop-up lists both meters and the missed days",
@@ -92,27 +113,61 @@ for size in ("outer", "fold5", "inner"):
         check("No: today's reading saved", rec and rec["thip_est"] is False and rec["nova_est"] is False, rec)
         check("No: missed days left blank", all(record(page, d) is None for d in GAP))
 
-        # Change Gaae&Thip only, then Yes: only that meter's missed days are filled.
+        # Change Gaae&Thip; Nig&Jop is unchanged but still has blank days, so both are offered.
         enter(page, thip="8081")
         page.wait_for_selector("dialog.summary[open]")
         text = page.text_content("dialog.summary")
-        check("Second time asks for Gaae&Thip only", "Gaae&Thip" in text and "Nig&Jop" not in text,
+        check("Second time asks again, for both meters", "Gaae&Thip" in text and "Nig&Jop" in text,
               " ".join(text.split()))
         page.click("dialog.summary button[value=yes]")
         page.wait_for_selector("dialog.summary", state="detached")
         page.wait_for_timeout(300)
         recs = [record(page, d) for d in GAP]
         check("Yes: missed days filled and marked estimated",
-              all(r and r["thip"] is not None and r["thip_est"] and r["nova"] is None for r in recs),
+              all(r and r["thip"] is not None and r["thip_est"] and r["nova"] is not None and r["nova_est"] for r in recs),
               [(r["date"], round(r["thip"], 1)) for r in recs if r])
         check("Filled values lie between the readings",
               all(28074 < r["thip"] < 28081 for r in recs))
 
-        # A reading with no gap before it: no pop-up.
-        page.fill("#date", TODAY.isoformat())
-        enter(page, nova="4770")
+        # A reading with no gap before it (18-20 Nov now estimated): no pop-up.
+        enter(page, thip="8082")
         page.wait_for_timeout(500)
-        check("No gap: no pop-up", page.locator("dialog.summary").count() == 0)
+        check("No gap: no pop-up", page.locator("dialog.summary").count() == 0 and record(page, TODAY.isoformat())["thip"] == 28082, (page.locator("dialog.summary").count(), record(page, TODAY.isoformat()), page.text_content("#dailyMsg")))
+
+        # 0000 on today's Gaae&Thip: offer to clear it (and the estimates next to it).
+        open_day(page, TODAY.isoformat())
+        page.focus("#in-thip")
+        tap_keys(page, "0000")
+        page.tap("#enterBtn")
+        page.wait_for_selector("dialog.summary[open]")
+        text = " ".join(page.text_content("dialog.summary").split())
+        check("0000 asks: clear, or meter really shows 0000",
+              "0000 for Gaae&Thip" in text and f"{len(GAP)} estimated day" in text, text)
+        page.locator("dialog.summary").screenshot(path=str(OUT / "daily-zero-dialog.png"))
+        page.click("dialog.summary button[value=clear]")
+        page.wait_for_selector("dialog.summary", state="detached")
+        page.wait_for_timeout(300)
+        rec = record(page, TODAY.isoformat())
+        check("Clear: today's Gaae&Thip blank, Nig&Jop kept", rec["thip"] is None and rec["nova"] == 44760, rec)
+        check("Clear: the estimates next to it cleared too", all(record(page, d)["thip"] is None for d in GAP))
+
+        # A wrong 0000 saved as a real reading on the 14th (taken as passing
+        # 30,000), then corrected: the days after it must follow.
+        open_day(page, "2026-11-14")
+        page.focus("#in-thip")
+        tap_keys(page, "0000")
+        page.tap("#enterBtn")
+        page.click("dialog.summary button[value=real]")   # the "Are you sure?" is accepted
+        page.wait_for_timeout(400)
+        check("Real 0000 saved; later readings follow it",
+              record(page, "2026-11-14")["thip"] == 30000 and record(page, "2026-11-15")["thip"] == 38072,
+              (record(page, "2026-11-14")["thip"], record(page, "2026-11-15")["thip"]))
+        page.focus("#in-thip")
+        tap_keys(page, "8071")
+        page.tap("#enterBtn")
+        page.wait_for_timeout(400)
+        later = [record(page, f"2026-11-{d}")["thip"] for d in (14, 15, 16, 17)]
+        check("Corrected: later readings renumbered back", later == [28071, 28072, 28073, 28074], later)
 
         # History: the current month starts open, older months closed.
         page.goto(page.base + "#history")

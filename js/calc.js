@@ -148,6 +148,102 @@ export function applyReading(readings, meter, date, full, fill = true) {
   return [...changed.values()].sort((x, y) => x.date.localeCompare(y.date));
 }
 
+// Clear a meter's reading for `date` (the user typed 0000 to blank it out).
+// Estimated runs directly before and after it are cleared too: they were
+// averaged using this reading, so without it they mean nothing. The days are
+// then simply blank, and the next reading entered offers to fill them again.
+// Returns the changed records; `readings` itself is not modified.
+export function clearReading(readings, meter, date) {
+  const byDate = indexByDate(readings);
+  const has = (d) => { const r = byDate.get(d); return !!r && r[meter] !== null && r[meter] !== undefined; };
+  const days = [date];
+  for (const dir of [-1, 1]) {
+    for (let d = addDays(date, dir); has(d) && byDate.get(d)[meter + '_est']; d = addDays(d, dir)) days.push(d);
+  }
+  return days.filter(has).sort()
+    .map((d) => ({ ...byDate.get(d), [meter]: null, [meter + '_est']: false }));
+}
+
+// Recalculate the leading (rollover-counting) digits of every reading after
+// `date`, from their last 4 digits, so they follow on from the reading at or
+// before `date`.
+//
+// Why: each full value is worked out from the reading before it. If that one
+// was wrong (say 0000 typed by mistake, which counts as passing 10,000) and is
+// later corrected, the readings after it would otherwise keep the extra 10,000,
+// and their usage would be nonsense. Running this after every change keeps the
+// whole chain consistent.
+//
+// Only real readings are renumbered this way: an estimate's digits were never
+// on the meter. An estimated run whose real reading at either end has changed
+// is averaged again between them. Returns the changed records.
+export function renumberAfter(readings, meter, date) {
+  const has = (r) => r[meter] !== null && r[meter] !== undefined;
+  const sorted = readings.filter(has).sort((a, b) => a.date.localeCompare(b.date));
+  const value = new Map(sorted.map((r) => [r.date, r[meter]])); // date -> (new) value
+
+  // 1. Real readings: each follows on from the real reading before it.
+  let prev = null;
+  for (const r of sorted) {
+    if (r[meter + '_est']) continue;
+    if (r.date <= date || prev === null) { prev = r[meter]; continue; }
+    const digits = r[meter] - Math.floor(r[meter] / 10000) * 10000; // last 4 digits
+    let full = Math.floor(prev / 10000) * 10000 + digits;
+    if (full < prev - 1e-6) full += 10000;  // passed a multiple of 10,000
+    value.set(r.date, full);
+    prev = full;
+  }
+
+  // 2. Estimated runs after `date`: average again if an end reading moved.
+  const moved = (r) => r && Math.abs(value.get(r.date) - r[meter]) > 1e-6;
+  for (let i = 0; i < sorted.length; i++) {
+    if (!sorted[i][meter + '_est'] || sorted[i].date <= date) continue;
+    let j = i;
+    while (j < sorted.length && sorted[j][meter + '_est']) j++;  // run is sorted[i … j-1]
+    const before = sorted[i - 1];
+    const after = sorted[j];
+    if (before && after && (moved(before) || moved(after))) {
+      for (const { date: d, value: v } of interpolate(before.date, value.get(before.date), after.date, value.get(after.date))) {
+        if (value.has(d)) value.set(d, v);
+      }
+    }
+    i = j - 1;
+  }
+
+  return sorted.filter((r) => r.date > date && moved(r)).map((r) => ({ ...r, [meter]: value.get(r.date) }));
+}
+
+// readings with `changed` records put in place of (or added to) the originals, sorted by date.
+export function mergeRecords(readings, changed) {
+  const map = indexByDate(readings);
+  for (const r of changed) map.set(r.date, r);
+  return [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Everything that happens when the user saves a reading, in the right order:
+//   1. store the value for `date`
+//   2. renumber the readings after it (in case an earlier mistake is being fixed)
+//   3. gap-fill (if `fill`) and re-interpolate neighbouring estimates, now
+//      against the corrected later readings
+// Returns the changed records.
+export function recordReading(readings, meter, date, full, fill = true) {
+  const changed = new Map();
+  let working = readings;
+  const merge = (list) => { for (const r of list) changed.set(r.date, r); working = mergeRecords(working, list); };
+  const old = indexByDate(readings).get(date) || blankRecord(date);
+  merge([{ ...old, [meter]: full, [meter + '_est']: false }]);
+  merge(renumberAfter(working, meter, date));
+  merge(applyReading(working, meter, date, full, fill));
+  return [...changed.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Clearing a reading (see clearReading), then renumbering the readings after it.
+export function removeReading(readings, meter, date) {
+  const cleared = clearReading(readings, meter, date);
+  const renumbered = renumberAfter(mergeRecords(readings, cleared), meter, date);
+  return mergeRecords(cleared, renumbered);
+}
+
 const blankRecord = (date) => ({ date, thip: null, nova: null, thip_est: false, nova_est: false });
 
 // ---------- Usage ----------

@@ -5,12 +5,18 @@
 //   2. sanity     – collect warnings ("Are you sure?") but never block
 //   3. gap-fill   – if days before it have no reading, ask whether to fill them
 //                   with averaged (interpolated) values
-//   4. save       – all changes in one database transaction
+//   4. save       – all changes in one database transaction; later readings are
+//                   renumbered so a corrected mistake can't spoil their usage
+// Typing 0000 offers to clear the day's reading instead (leave the day blank).
+//
+// The screen has its own number keypad, so the phone's keyboard never opens
+// here (inputmode="none" on the boxes). Chrome only opens the phone's keyboard
+// after a tap on the box; the built-in keypad works straight away.
 
 import { getAll, putMany } from './db.js';
 import {
   METERS, addDays, indexByDate, rollover, previousReading, nextRealReading,
-  applyReading, missedDays, sanityCheck, recentRealUsages, seasonalTypical, last4,
+  recordReading, removeReading, clearReading, missedDays, sanityCheck, recentRealUsages, seasonalTypical, last4,
 } from './calc.js';
 import { NAMES, MONTHS, todayISO, fmtDay, fmtNum, fmtDateRanges, esc } from './format.js';
 import { ask } from './dialog.js';
@@ -29,15 +35,12 @@ export function renderDaily(container, startDate = null) {
   app = container;
   fromHistory = /^\d{4}-\d{2}-\d{2}$/.test(startDate || '');
   date = fromHistory ? startDate : todayISO();
-  return draw().then(focusFirstBox);
+  return draw();
 }
 
-// Put the cursor in the Gaae&Thip box, ready to type, when today's reading
-// hasn't been entered yet (not when editing a day from History).
+// Put the cursor in the Gaae&Thip box, ready to type on the keypad.
 function focusFirstBox() {
-  const input = document.getElementById('in-thip');
-  if (!input || fromHistory || date !== todayISO() || input.value) return;
-  input.focus({ preventScroll: true });
+  document.getElementById('in-thip')?.focus({ preventScroll: true });
 }
 
 // Coming back to the app (e.g. reopened from the home screen while it was
@@ -50,8 +53,9 @@ document.addEventListener('visibilitychange', async () => {
       && !document.getElementById('in-nova').value) {
     date = todayISO();
     await draw();
+  } else if (!document.activeElement?.matches('#in-thip, #in-nova')) {
+    focusFirstBox();
   }
-  focusFirstBox();
 });
 
 async function draw() {
@@ -74,7 +78,12 @@ async function draw() {
       <div class="row">
         ${METERS.map((m) => meterField(m, readings, byDate)).join('')}
       </div>
-      <button type="submit" class="full" id="enterBtn">Enter</button>
+      <div class="keypad" id="keypad">
+        ${[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `<button type="button" data-key="${n}">${n}</button>`).join('')}
+        <button type="button" class="secondary" data-key="back" aria-label="Delete">⌫</button>
+        <button type="button" data-key="0">0</button>
+        <button type="submit" class="enter" id="enterBtn">Enter</button>
+      </div>
       <p id="dailyMsg" class="error"></p>
     </form>
     ${fromHistory ? '<button type="button" class="secondary full" id="backBtn">‹ Back to History</button>' : ''}
@@ -94,12 +103,44 @@ async function draw() {
   for (const m of METERS) {
     const input = document.getElementById(`in-${m}`);
     if (input.value) instantCheck(m, input.value, readings, byDate); // usage for a saved reading
-    input.addEventListener('focus', () => input.select()); // typing replaces the saved value
+    input.addEventListener('focus', () => { lastBox = input; input.select(); }); // typing replaces the saved value
     input.addEventListener('input', () => {
       instantCheck(m, input.value, readings, byDate);
       if (m === 'thip' && input.value.length === 4) document.getElementById('in-nova').focus();
     });
   }
+
+  // The keypad. Pressing a key mustn't move the cursor out of the box, so the
+  // press itself is cancelled (pointerdown); the tap still counts as a click.
+  const keypad = document.getElementById('keypad');
+  keypad.addEventListener('pointerdown', (e) => { if (e.target.closest('button')) e.preventDefault(); });
+  keypad.addEventListener('click', (e) => {
+    const key = e.target.closest('button')?.dataset.key;
+    if (key) pressKey(key);
+  });
+
+  focusFirstBox();
+}
+
+let lastBox = null; // the box the keypad types into if neither has the cursor
+
+// A keypad key: type a digit, or delete (⌫), at the cursor, as a keyboard would.
+function pressKey(key) {
+  let input = document.activeElement;
+  if (!input?.matches('#in-thip, #in-nova')) {
+    input = lastBox?.isConnected ? lastBox : document.getElementById('in-thip');
+    input.focus({ preventScroll: true });
+  }
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  if (key === 'back') {
+    if (start === end && start === 0) return;
+    input.setRangeText('', start === end ? start - 1 : start, end, 'end');
+  } else {
+    if (input.value.length - (end - start) >= 4) return; // already 4 digits
+    input.setRangeText(key, start, end, 'end');
+  }
+  input.dispatchEvent(new Event('input', { bubbles: true })); // run the usual checks
 }
 
 // Feedback under a box once 4 digits are typed:
@@ -114,6 +155,10 @@ function instantCheck(m, raw, readings, byDate) {
   if (raw.length < 4) return;               // still typing
   if (!/^\d{4}$/.test(raw)) {
     warnBox.textContent = 'Digits only, please.';
+    return;
+  }
+  if (raw === '0000') {
+    infoBox.textContent = 'On Enter you can clear this day (leave it blank)';
     return;
   }
   const { warnings, info, usage } = checkMeter(m, Number(raw), readings, byDate);
@@ -194,8 +239,8 @@ function meterField(m, readings, byDate) {
   return `
     <div class="field">
       <label for="in-${m}">${esc(NAMES[m])}</label>
-      <input id="in-${m}" inputmode="numeric" pattern="[0-9]*" maxlength="4"
-             value="${saved.real ?? ''}" placeholder="${saved.est ?? '0000'}">
+      <input id="in-${m}" inputmode="none" pattern="[0-9]*" maxlength="4"
+             value="${saved.real ?? ''}" placeholder="${saved.est ?? ''}">
       <div class="hint">${hint}</div>
       <div class="info" id="info-${m}"></div>
       <div class="warn" id="warn-${m}"></div>
@@ -218,7 +263,13 @@ async function onEnter(readings, byDate) {
       return;
     }
     const { real } = savedDigits(m, byDate);
-    if (real !== null && Number(raw) === Number(real)) { unchanged++; continue; }
+    // Unchanged, unless there are blank days before it (then Enter offers to fill
+    // them) or it is 0000 (then Enter offers to clear it).
+    if (real !== null && Number(raw) === Number(real) && Number(raw) !== 0
+        && !missedDays(readings, m, date).length) {
+      unchanged++;
+      continue;
+    }
     entries.push({ m, digits: Number(raw) });
   }
   if (!entries.length) {
@@ -226,10 +277,19 @@ async function onEnter(readings, byDate) {
     return;
   }
 
+  // 0000: clear the day's reading, or is the meter really showing 0000?
+  for (const entry of entries.filter((e) => e.digits === 0)) {
+    const answer = await askZero(entry.m, readings);
+    if (answer !== 'clear' && answer !== 'real') return;   // Cancel or Back: nothing saved
+    entry.clear = answer === 'clear';
+  }
+  const clears = entries.filter((e) => e.clear);
+  const toRecord = entries.filter((e) => !e.clear);
+
   // Check each meter, collecting warnings. The meters are independent, so each
   // is checked against the readings as loaded.
   const warnings = [];
-  for (const entry of entries) {
+  for (const entry of toRecord) {
     const { full, warnings: w, info } = checkMeter(entry.m, entry.digits, readings, byDate);
     entry.full = full;
     for (const text of [...info, ...w]) warnings.push(`${NAMES[entry.m]}: ${text}.`);
@@ -241,7 +301,7 @@ async function onEnter(readings, byDate) {
   }
 
   // Days just before this one with no reading: ask whether to fill them.
-  const gaps = entries
+  const gaps = toRecord
     .map(({ m }) => ({ m, days: missedDays(readings, m, date) }))
     .filter((g) => g.days.length);
   let fill = true;
@@ -255,13 +315,18 @@ async function onEnter(readings, byDate) {
   // into a working copy, so the next meter sees them (both may touch a day).
   let working = readings;
   const toSave = new Map();      // date -> record
-  for (const { m, full } of entries) {
-    const changed = applyReading(working, m, date, full, fill);
+  const apply = (changed) => {
     const map = indexByDate(working);
     for (const r of changed) { map.set(r.date, r); toSave.set(r.date, r); }
     working = [...map.values()].sort((a, b) => a.date.localeCompare(b.date));
-  }
+  };
+  for (const { m } of clears) apply(removeReading(working, m, date));
+  for (const { m, full } of toRecord) apply(recordReading(working, m, date, full, fill));
 
+  if (!toSave.size) {
+    msg.textContent = 'Nothing to save: there was no reading to clear.';
+    return;
+  }
   await putMany('readings', [...toSave.values()]);
   draw(); // redraw: boxes show the saved values with their usage
 }
@@ -280,5 +345,28 @@ function askFill(gaps) {
   [
     { value: 'no', label: 'No, leave blank', secondary: true },
     { value: 'yes', label: 'Yes, fill' },
+  ]);
+}
+
+// 0000 typed for meter m: clear this day's reading, or is the meter really
+// showing 0000 (it passes 0000 once every 10,000 kWh)? Resolves 'clear',
+// 'real', 'cancel' or '' (closed with Back).
+function askZero(m, readings) {
+  const cleared = clearReading(readings, m, date);
+  const savedRec = indexByDate(readings).get(date);
+  const saved = cleared.some((r) => r.date === date);
+  const others = cleared.length - (saved ? 1 : 0);
+  let what = saved
+    ? `the ${savedRec[m + '_est'] ? 'estimated' : 'saved'} reading ${last4(savedRec[m])}`
+    : 'nothing (there is no reading saved)';
+  if (others) what += ` and the ${others} estimated day${others > 1 ? 's' : ''} next to it (they were averaged using it)`;
+  return ask(`
+    <h2>0000 for ${esc(NAMES[m])}</h2>
+    <p>Clear ${fmtDay(date)}, leaving it blank? That clears ${what}.</p>
+    <p>Or is the meter really showing 0000?</p>`,
+  [
+    { value: 'cancel', label: 'Cancel', secondary: true },
+    { value: 'real', label: 'Meter shows 0000', secondary: true },
+    { value: 'clear', label: 'Clear' },
   ]);
 }
